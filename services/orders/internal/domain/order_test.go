@@ -89,7 +89,7 @@ func TestOrder_MarkPaidThenFulfill_TransitionsInOrder(t *testing.T) {
 
 	require.NoError(t, order.MarkPaid())
 	assert.Equal(t, domain.OrderStatusPaid, order.Status)
-	require.NoError(t, order.Fulfill())
+	require.NoError(t, order.Fulfill("TRK-123", "olva"))
 	assert.Equal(t, domain.OrderStatusFulfilled, order.Status)
 }
 

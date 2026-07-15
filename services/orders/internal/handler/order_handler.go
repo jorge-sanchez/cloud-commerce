@@ -75,6 +75,29 @@ func (h *OrderHandler) ConfirmPayment(c *gin.Context) {
 func (h *OrderHandler) RegisterMerchantRoutes(rg *gin.RouterGroup) {
 	rg.GET("/orders", h.ListOrders)
 	rg.GET("/orders/:id", h.GetOrder)
+	rg.POST("/orders/:id/fulfill", h.FulfillOrder)
+}
+
+type fulfillOrderRequest struct {
+	TrackingNumber string `json:"tracking_number"`
+	Carrier        string `json:"carrier"`
+}
+
+func (h *OrderHandler) FulfillOrder(c *gin.Context) {
+	var req fulfillOrderRequest
+	if c.Request.ContentLength > 0 {
+		if err := c.ShouldBindJSON(&req); err != nil {
+			apperrors.RespondError(c, apperrors.ErrValidation.Wrap(err))
+			return
+		}
+	}
+
+	order, err := h.svc.FulfillOrder(c.Request.Context(), auth.TenantID(c), c.Param("id"), req.TrackingNumber, req.Carrier)
+	if err != nil {
+		apperrors.RespondError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, toOrderResponse(order))
 }
 
 type createCartRequest struct {
@@ -205,13 +228,15 @@ func toCartResponse(cart *domain.Cart) CartResponse {
 
 func toOrderResponse(o *domain.Order) OrderResponse {
 	return OrderResponse{
-		ID:         o.ID,
-		Number:     o.Number,
-		Email:      o.Email,
-		Currency:   o.Currency,
-		Items:      toItemResponses(o.Items),
-		TotalCents: o.TotalCents,
-		Status:     string(o.Status),
-		CreatedAt:  o.CreatedAt,
+		ID:             o.ID,
+		Number:         o.Number,
+		Email:          o.Email,
+		Currency:       o.Currency,
+		Items:          toItemResponses(o.Items),
+		TotalCents:     o.TotalCents,
+		Status:         string(o.Status),
+		TrackingNumber: o.TrackingNumber,
+		Carrier:        o.Carrier,
+		CreatedAt:      o.CreatedAt,
 	}
 }

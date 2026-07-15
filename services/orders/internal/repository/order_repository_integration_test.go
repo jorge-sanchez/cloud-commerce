@@ -1,7 +1,7 @@
 //go:build integration
 
-// Test Budget: 4 distinct behaviors × 2 = 8 max integration tests
-// Actual: 8
+// Test Budget: 5 distinct behaviors × 2 = 10 max integration tests
+// Actual: 10
 //
 // Behavior 1: cart round-trip — SaveNewCart + ReplaceItems + GetCart;
 //
@@ -19,6 +19,10 @@
 // Behavior 4: tenant scoping (ADR-001) — another tenant's order is
 //
 //	ErrNotFound
+//
+// Behavior 5: FulfillIfFulfillable — paid orders fulfill with tracking and
+//
+//	the fulfilled event; pending orders are rejected
 package repository
 
 import (
@@ -210,4 +214,41 @@ func TestPostgresOrderRepository_ListByTenant_ReturnsOrdersWithItems(t *testing.
 	assert.Equal(t, 1, total)
 	require.Len(t, orders, 1, "the tenant's order must be listed")
 	require.Len(t, orders[0].Items, 1, "listed orders must carry their items")
+}
+
+// ---------------------------------------------------------------------------
+// Behavior 5: FulfillIfFulfillable — the entity decides
+// ---------------------------------------------------------------------------
+
+func TestPostgresOrderRepository_FulfillIfFulfillable_PaidOrder_FulfillsWithTrackingAndEvent(t *testing.T) {
+	db := openMigratedDB(t)
+	repo := NewPostgresOrderRepository(db, WithEventRecorder(outbox.NewRecorder()))
+	cart := cartWithItem(t, repo)
+	order, err := repo.PlaceOrderFromCart(context.Background(), cart.ID, "buyer@example.test")
+	require.NoError(t, err)
+	_, err = repo.MarkPaidIfPayable(context.Background(), order.ID)
+	require.NoError(t, err)
+
+	fulfilled, err := repo.FulfillIfFulfillable(context.Background(), tenantA, order.ID, "TRK-123", "olva")
+
+	require.NoError(t, err)
+	assert.Equal(t, domain.OrderStatusFulfilled, fulfilled.Status)
+	assert.Equal(t, "TRK-123", fulfilled.TrackingNumber)
+
+	var eventCount int
+	require.NoError(t, db.QueryRow(
+		`SELECT COUNT(*) FROM outbox WHERE event_type = $1`, domain.OrderFulfilledEventType,
+	).Scan(&eventCount))
+	assert.Equal(t, 1, eventCount, "order_fulfilled must be recorded with the transition")
+}
+
+func TestPostgresOrderRepository_FulfillIfFulfillable_PendingOrder_Conflicts(t *testing.T) {
+	repo := NewPostgresOrderRepository(openMigratedDB(t))
+	cart := cartWithItem(t, repo)
+	order, err := repo.PlaceOrderFromCart(context.Background(), cart.ID, "buyer@example.test")
+	require.NoError(t, err)
+
+	_, err = repo.FulfillIfFulfillable(context.Background(), tenantA, order.ID, "", "")
+
+	require.ErrorIs(t, err, apperrors.ErrConflict, "an unpaid order must not be fulfillable")
 }

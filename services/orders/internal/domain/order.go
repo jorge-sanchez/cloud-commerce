@@ -90,16 +90,18 @@ func (c *Cart) TotalCents() int64 {
 // Order is the aggregate created at checkout. It owns its items; they are
 // persisted with it atomically.
 type Order struct {
-	ID         string
-	Number     int64
-	TenantID   string
-	Email      string
-	Currency   string
-	Items      []Item
-	TotalCents int64
-	Status     OrderStatus
-	CreatedAt  time.Time
-	UpdatedAt  time.Time
+	ID             string
+	Number         int64
+	TenantID       string
+	Email          string
+	Currency       string
+	Items          []Item
+	TotalCents     int64
+	Status         OrderStatus
+	TrackingNumber string
+	Carrier        string
+	CreatedAt      time.Time
+	UpdatedAt      time.Time
 }
 
 // NewOrderFromCart converts a cart into a pending order. The entity
@@ -140,12 +142,14 @@ func (o *Order) MarkPaid() error {
 	return nil
 }
 
-// Fulfill transitions paid → fulfilled.
-func (o *Order) Fulfill() error {
+// Fulfill transitions paid → fulfilled, attaching optional tracking.
+func (o *Order) Fulfill(trackingNumber, carrier string) error {
 	if o.Status != OrderStatusPaid {
 		return fmt.Errorf("%w: status is %q", ErrNotFulfillable, o.Status)
 	}
 	o.Status = OrderStatusFulfilled
+	o.TrackingNumber = strings.TrimSpace(trackingNumber)
+	o.Carrier = strings.TrimSpace(carrier)
 	return nil
 }
 
@@ -160,9 +164,35 @@ func (o *Order) Cancel() error {
 
 // Event types for the order aggregate.
 const (
-	OrderPlacedEventType = "orders.order_placed"
-	OrderPaidEventType   = "orders.order_paid"
+	OrderPlacedEventType    = "orders.order_placed"
+	OrderPaidEventType      = "orders.order_paid"
+	OrderFulfilledEventType = "orders.order_fulfilled"
 )
+
+// OrderFulfilledEvent is emitted at fulfillment; notifications will consume
+// it (buyer email travels in the event so consumers need no order lookup).
+type OrderFulfilledEvent struct {
+	OrderID        string    `json:"order_id"`
+	Number         int64     `json:"number"`
+	TenantID       string    `json:"tenant_id"`
+	Email          string    `json:"email"`
+	TrackingNumber string    `json:"tracking_number"`
+	Carrier        string    `json:"carrier"`
+	FulfilledAt    time.Time `json:"fulfilled_at"`
+}
+
+// NewOrderFulfilledEvent builds the event from the persisted order.
+func NewOrderFulfilledEvent(o *Order, at time.Time) OrderFulfilledEvent {
+	return OrderFulfilledEvent{
+		OrderID:        o.ID,
+		Number:         o.Number,
+		TenantID:       o.TenantID,
+		Email:          o.Email,
+		TrackingNumber: o.TrackingNumber,
+		Carrier:        o.Carrier,
+		FulfilledAt:    at,
+	}
+}
 
 // EventItem is the wire shape of a line inside order events.
 type EventItem struct {
@@ -235,6 +265,10 @@ type OrderRepository interface {
 	// transition, persists it, and records order_paid. Returns
 	// apperrors.ErrConflict when the entity rejects it.
 	MarkPaidIfPayable(ctx context.Context, orderID string) (*Order, error)
+	// FulfillIfFulfillable loads the order tenant-scoped, lets the entity
+	// decide the transition, persists it with tracking, and records
+	// order_fulfilled. Returns apperrors.ErrConflict when rejected.
+	FulfillIfFulfillable(ctx context.Context, tenantID, orderID, trackingNumber, carrier string) (*Order, error)
 	// GetByID returns the order with items, tenant-scoped.
 	GetByID(ctx context.Context, tenantID, orderID string) (*Order, error)
 	// GetPublicByID returns the order by unguessable ID alone — the

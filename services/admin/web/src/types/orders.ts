@@ -42,6 +42,8 @@ export interface OrderResponse {
   items: ItemResponse[];
   total_cents: number /* int64 */;
   status: string;
+  tracking_number: string;
+  carrier: string;
   created_at: string /* RFC 3339 */;
 }
 /**
