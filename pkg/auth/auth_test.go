@@ -31,7 +31,7 @@ func testKeypair(t *testing.T) (string, string) {
 }
 
 func testClaims() auth.Claims {
-	return auth.Claims{UserID: "user-001", TenantID: "tenant-001", Email: "owner@store.test"}
+	return auth.Claims{UserID: "user-001", TenantID: "tenant-001", Email: "owner@store.test", Role: "owner"}
 }
 
 // ---------------------------------------------------------------------------
@@ -53,6 +53,7 @@ func TestIssuerVerifier_IssueThenVerify_RoundTripsClaims(t *testing.T) {
 	assert.Equal(t, "user-001", claims.UserID)
 	assert.Equal(t, "tenant-001", claims.TenantID)
 	assert.Equal(t, "owner@store.test", claims.Email)
+	assert.Equal(t, "owner", claims.Role)
 }
 
 func TestVerifier_ExpiredToken_ReturnsErrInvalidToken(t *testing.T) {

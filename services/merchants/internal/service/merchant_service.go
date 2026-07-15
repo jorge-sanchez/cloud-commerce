@@ -33,7 +33,10 @@ type MerchantService interface {
 	LogIn(ctx context.Context, email, password string) (*Session, error)
 	Me(ctx context.Context, tenantID, userID string) (*domain.Merchant, *domain.User, error)
 	GetStore(ctx context.Context, tenantID string) (*domain.Merchant, error)
-	UpdateStore(ctx context.Context, tenantID, name string, settings domain.StoreSettings) (*domain.Merchant, error)
+	UpdateStore(ctx context.Context, tenantID string, actorRole domain.UserRole, name string, settings domain.StoreSettings) (*domain.Merchant, error)
+	AddStaff(ctx context.Context, tenantID string, actorRole domain.UserRole, email, password string) (*domain.User, error)
+	ListStaff(ctx context.Context, tenantID string, actorRole domain.UserRole) ([]*domain.User, error)
+	RemoveStaff(ctx context.Context, tenantID string, actorRole domain.UserRole, userID string) error
 }
 
 type merchantService struct {
@@ -112,14 +115,49 @@ func (s *merchantService) GetStore(ctx context.Context, tenantID string) (*domai
 	return s.repo.GetByID(ctx, tenantID)
 }
 
-func (s *merchantService) UpdateStore(ctx context.Context, tenantID, name string, settings domain.StoreSettings) (*domain.Merchant, error) {
+func (s *merchantService) UpdateStore(ctx context.Context, tenantID string, actorRole domain.UserRole, name string, settings domain.StoreSettings) (*domain.Merchant, error) {
+	if !actorRole.CanManageStaff() {
+		return nil, apperrors.ErrForbidden
+	}
 	// The entity validates inside the repository transaction; the settings
 	// event is recorded there too (ADR-002).
 	return s.repo.UpdateStoreProfile(ctx, tenantID, name, settings)
 }
 
+func (s *merchantService) AddStaff(ctx context.Context, tenantID string, actorRole domain.UserRole, email, password string) (*domain.User, error) {
+	if !actorRole.CanManageStaff() {
+		return nil, apperrors.ErrForbidden
+	}
+	if err := domain.ValidatePassword(password); err != nil {
+		return nil, apperrors.ErrValidation.Wrap(err)
+	}
+	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	if err != nil {
+		return nil, apperrors.ErrInternal.Wrap(err)
+	}
+	staff, err := domain.NewStaff(email, string(hash))
+	if err != nil {
+		return nil, apperrors.ErrValidation.Wrap(err)
+	}
+	return s.repo.SaveNewStaff(ctx, tenantID, staff)
+}
+
+func (s *merchantService) ListStaff(ctx context.Context, tenantID string, actorRole domain.UserRole) ([]*domain.User, error) {
+	if !actorRole.CanManageStaff() {
+		return nil, apperrors.ErrForbidden
+	}
+	return s.repo.ListUsers(ctx, tenantID)
+}
+
+func (s *merchantService) RemoveStaff(ctx context.Context, tenantID string, actorRole domain.UserRole, userID string) error {
+	if !actorRole.CanManageStaff() {
+		return apperrors.ErrForbidden
+	}
+	return s.repo.DeleteUserIfRemovable(ctx, tenantID, userID)
+}
+
 func (s *merchantService) session(m *domain.Merchant, u *domain.User) (*Session, error) {
-	token, err := s.issuer.Issue(auth.Claims{UserID: u.ID, TenantID: m.ID, Email: u.Email})
+	token, err := s.issuer.Issue(auth.Claims{UserID: u.ID, TenantID: m.ID, Email: u.Email, Role: string(u.Role)})
 	if err != nil {
 		return nil, apperrors.ErrInternal.Wrap(err)
 	}

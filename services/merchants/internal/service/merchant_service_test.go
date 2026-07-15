@@ -1,5 +1,5 @@
-// Test Budget: 4 distinct behaviors × 2 = 8 max unit tests
-// Actual: 6
+// Test Budget: 5 distinct behaviors × 2 = 10 max unit tests
+// Actual: 8
 //
 // Behavior 1: SignUp — persists merchant+owner atomically and returns a
 //
@@ -11,6 +11,9 @@
 //
 // Behavior 3: LogIn — unknown email is ErrUnauthorized (no enumeration)
 // Behavior 4: Me — delegates to repo tenant-scoped and passes errors through
+// Behavior 5: staff management — owner adds staff (hashed, staff role);
+//
+//	non-owner is ErrForbidden with no write
 package service
 
 import (
@@ -34,6 +37,7 @@ var _ domain.MerchantRepository = (*fakeMerchantRepo)(nil)
 
 type fakeMerchantRepo struct {
 	savedMerchants []*domain.Merchant
+	savedStaff     []*domain.User
 	userByEmail    *domain.User
 	userByEmailErr error
 	merchant       *domain.Merchant
@@ -65,6 +69,22 @@ func (f *fakeMerchantRepo) GetByID(_ context.Context, _ string) (*domain.Merchan
 
 func (f *fakeMerchantRepo) UpdateStoreProfile(_ context.Context, _, _ string, _ domain.StoreSettings) (*domain.Merchant, error) {
 	return f.merchant, f.getErr
+}
+
+func (f *fakeMerchantRepo) SaveNewStaff(_ context.Context, tenantID string, u *domain.User) (*domain.User, error) {
+	stored := *u
+	stored.ID = "user-002"
+	stored.MerchantID = tenantID
+	f.savedStaff = append(f.savedStaff, &stored)
+	return &stored, nil
+}
+
+func (f *fakeMerchantRepo) ListUsers(_ context.Context, _ string) ([]*domain.User, error) {
+	return nil, f.getErr
+}
+
+func (f *fakeMerchantRepo) DeleteUserIfRemovable(_ context.Context, _, _ string) error {
+	return f.getErr
 }
 
 var _ TokenIssuer = (*fakeIssuer)(nil)
@@ -161,6 +181,33 @@ func TestMerchantService_LogIn_UnknownEmail_ReturnsUnauthorized(t *testing.T) {
 	_, err := svc.LogIn(context.Background(), "nobody@store.test", "whatever-pass")
 
 	require.ErrorIs(t, err, apperrors.ErrUnauthorized, "unknown email must not be distinguishable from a wrong password")
+}
+
+// ---------------------------------------------------------------------------
+// Behavior 5: staff management authorization
+// ---------------------------------------------------------------------------
+
+func TestMerchantService_AddStaff_ByOwner_SavesStaffWithHashedPassword(t *testing.T) {
+	repo := &fakeMerchantRepo{}
+	svc := NewMerchantService(repo, &fakeIssuer{})
+
+	staff, err := svc.AddStaff(context.Background(), "merchant-001", domain.UserRoleOwner, "Staff@Store.Test", "a-strong-passphrase")
+
+	require.NoError(t, err)
+	assert.Equal(t, domain.UserRoleStaff, staff.Role)
+	assert.Equal(t, "staff@store.test", staff.Email, "email must be normalized")
+	require.Len(t, repo.savedStaff, 1, "exactly one staff user must be written")
+	assert.NotEqual(t, "a-strong-passphrase", repo.savedStaff[0].PasswordHash, "the password must be stored hashed")
+}
+
+func TestMerchantService_AddStaff_ByStaff_ReturnsForbiddenAndNoWrite(t *testing.T) {
+	repo := &fakeMerchantRepo{}
+	svc := NewMerchantService(repo, &fakeIssuer{})
+
+	_, err := svc.AddStaff(context.Background(), "merchant-001", domain.UserRoleStaff, "staff@store.test", "a-strong-passphrase")
+
+	require.ErrorIs(t, err, apperrors.ErrForbidden)
+	require.Len(t, repo.savedStaff, 0, "no staff user may be written for a non-owner actor")
 }
 
 // ---------------------------------------------------------------------------

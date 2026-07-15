@@ -34,6 +34,16 @@ type MeResponse struct {
 	User     UserResponse     `json:"user"`
 }
 
+// ListStaffResponse is the blessed offset envelope for the staff list
+// (page is always 1 — staff lists are small; the envelope keeps the shape
+// forward-compatible).
+type ListStaffResponse struct {
+	Items    []UserResponse `json:"items"`
+	Total    int            `json:"total"`
+	Page     int            `json:"page"`
+	PageSize int            `json:"page_size"`
+}
+
 // StoreResponse is the store profile wire shape.
 type StoreResponse struct {
 	ID           string    `json:"id"`

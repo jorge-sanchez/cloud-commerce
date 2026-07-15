@@ -195,6 +195,87 @@ func (r *PostgresMerchantRepository) scanMerchant(row *sql.Row) (*domain.Merchan
 	return &m, nil
 }
 
+func (r *PostgresMerchantRepository) SaveNewStaff(ctx context.Context, tenantID string, u *domain.User) (*domain.User, error) {
+	user := *u
+	user.MerchantID = tenantID
+	err := r.db.QueryRowContext(ctx, `
+		INSERT INTO merchant_users (merchant_id, email, password_hash, role)
+		VALUES ($1, $2, $3, $4)
+		RETURNING id, created_at`,
+		tenantID, user.Email, user.PasswordHash, string(user.Role),
+	).Scan(&user.ID, &user.CreatedAt)
+	if err != nil {
+		var pqErr *pq.Error
+		if errors.As(err, &pqErr) && string(pqErr.Code) == uniqueViolation {
+			return nil, apperrors.ErrConflict.Wrap(err)
+		}
+		return nil, apperrors.ErrInternal.Wrap(err)
+	}
+	return &user, nil
+}
+
+func (r *PostgresMerchantRepository) ListUsers(ctx context.Context, tenantID string) ([]*domain.User, error) {
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT id, merchant_id, email, password_hash, role, created_at
+		FROM merchant_users WHERE merchant_id = $1
+		ORDER BY role = 'owner' DESC, created_at`,
+		tenantID,
+	)
+	if err != nil {
+		return nil, apperrors.ErrInternal.Wrap(err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	users := make([]*domain.User, 0, 8)
+	for rows.Next() {
+		var u domain.User
+		var role string
+		if err := rows.Scan(&u.ID, &u.MerchantID, &u.Email, &u.PasswordHash, &role, &u.CreatedAt); err != nil {
+			return nil, apperrors.ErrInternal.Wrap(err)
+		}
+		u.Role = domain.UserRole(role)
+		users = append(users, &u)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, apperrors.ErrInternal.Wrap(err)
+	}
+	return users, nil
+}
+
+// DeleteUserIfRemovable loads the user inside a transaction, lets the entity
+// decide whether it may be removed, and deletes what the entity allowed.
+func (r *PostgresMerchantRepository) DeleteUserIfRemovable(ctx context.Context, tenantID, userID string) error {
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return apperrors.ErrInternal.Wrap(err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	user, err := r.scanUser(tx.QueryRowContext(ctx, `
+		SELECT id, merchant_id, email, password_hash, role, created_at
+		FROM merchant_users WHERE merchant_id = $1 AND id = $2 FOR UPDATE`,
+		tenantID, userID,
+	))
+	if err != nil {
+		return err
+	}
+
+	if !user.CanBeRemoved() { // entity decides
+		return apperrors.ErrConflict.Wrap(errors.New("the owner cannot be removed"))
+	}
+
+	if _, err := tx.ExecContext(ctx,
+		`DELETE FROM merchant_users WHERE merchant_id = $1 AND id = $2`,
+		tenantID, userID,
+	); err != nil {
+		return apperrors.ErrInternal.Wrap(err)
+	}
+	if err := tx.Commit(); err != nil {
+		return apperrors.ErrInternal.Wrap(err)
+	}
+	return nil
+}
+
 func (r *PostgresMerchantRepository) scanUser(row *sql.Row) (*domain.User, error) {
 	var u domain.User
 	var role string

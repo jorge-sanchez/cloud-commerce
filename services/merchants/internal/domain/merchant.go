@@ -117,6 +117,27 @@ func NewOwner(email, passwordHash string) (*User, error) {
 	return &User{Email: normalized, PasswordHash: passwordHash, Role: UserRoleOwner}, nil
 }
 
+// NewStaff constructs a staff user for an existing merchant.
+func NewStaff(email, passwordHash string) (*User, error) {
+	normalized, err := NormalizeEmail(email)
+	if err != nil {
+		return nil, err
+	}
+	return &User{Email: normalized, PasswordHash: passwordHash, Role: UserRoleStaff}, nil
+}
+
+// CanManageStaff reports whether a user with this role may add or remove
+// staff and change store settings.
+func (r UserRole) CanManageStaff() bool {
+	return r == UserRoleOwner
+}
+
+// CanBeRemoved reports whether this user may be deleted. The owner is
+// immutable — a merchant always has exactly one.
+func (u *User) CanBeRemoved() bool {
+	return u.Role != UserRoleOwner
+}
+
 // NormalizeEmail lowercases and validates an email address.
 func NormalizeEmail(email string) (string, error) {
 	normalized := strings.ToLower(strings.TrimSpace(email))
@@ -215,4 +236,13 @@ type MerchantRepository interface {
 	// new profile, and persists what the entity decided. Returns
 	// apperrors.ErrValidation when the entity rejects it.
 	UpdateStoreProfile(ctx context.Context, tenantID, name string, settings StoreSettings) (*Merchant, error)
+	// SaveNewStaff persists a staff user for an existing merchant. A taken
+	// email returns apperrors.ErrConflict.
+	SaveNewStaff(ctx context.Context, tenantID string, u *User) (*User, error)
+	// ListUsers returns all users of the merchant, owner first.
+	ListUsers(ctx context.Context, tenantID string) ([]*User, error)
+	// DeleteUserIfRemovable loads the user, lets the entity decide whether
+	// it may be removed (the owner may not), and deletes it. Returns
+	// apperrors.ErrConflict when the entity refuses.
+	DeleteUserIfRemovable(ctx context.Context, tenantID, userID string) error
 }
