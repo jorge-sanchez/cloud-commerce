@@ -10,6 +10,7 @@ const (
 	ctxTenantID = "auth.tenant_id"
 	ctxUserID   = "auth.user_id"
 	ctxEmail    = "auth.email"
+	ctxRole     = "auth.role"
 )
 
 // Middleware rejects requests without a valid platform token and injects
@@ -31,6 +32,7 @@ func Middleware(v *Verifier) gin.HandlerFunc {
 		c.Set(ctxTenantID, claims.TenantID)
 		c.Set(ctxUserID, claims.UserID)
 		c.Set(ctxEmail, claims.Email)
+		c.Set(ctxRole, claims.Role)
 		c.Next()
 	}
 }
@@ -45,3 +47,7 @@ func UserID(c *gin.Context) string { return c.GetString(ctxUserID) }
 
 // Email returns the verified email for this request.
 func Email(c *gin.Context) string { return c.GetString(ctxEmail) }
+
+// Role returns the verified merchant-user role for this request. Empty for
+// tokens issued before roles existed — treat as no privileges.
+func Role(c *gin.Context) string { return c.GetString(ctxRole) }

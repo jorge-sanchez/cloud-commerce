@@ -36,6 +36,15 @@ func (h *MerchantHandler) RegisterAuthedRoutes(rg *gin.RouterGroup) {
 	rg.GET("/me", h.Me)
 	rg.GET("/store", h.GetStore)
 	rg.PUT("/store", h.UpdateStore)
+	rg.POST("/staff", h.AddStaff)
+	rg.GET("/staff", h.ListStaff)
+	rg.DELETE("/staff/:id", h.RemoveStaff)
+}
+
+// actorRole reads the verified role claim. Authorization decisions live in
+// the service/domain — the handler only translates.
+func actorRole(c *gin.Context) domain.UserRole {
+	return domain.UserRole(auth.Role(c))
 }
 
 type signUpRequest struct {
@@ -114,7 +123,7 @@ func (h *MerchantHandler) UpdateStore(c *gin.Context) {
 		return
 	}
 
-	merchant, err := h.svc.UpdateStore(c.Request.Context(), auth.TenantID(c), req.Name, domain.StoreSettings{
+	merchant, err := h.svc.UpdateStore(c.Request.Context(), auth.TenantID(c), actorRole(c), req.Name, domain.StoreSettings{
 		Currency:     req.Currency,
 		Timezone:     req.Timezone,
 		SupportEmail: req.SupportEmail,
@@ -124,6 +133,48 @@ func (h *MerchantHandler) UpdateStore(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, toStoreResponse(merchant))
+}
+
+type addStaffRequest struct {
+	Email    string `json:"email" binding:"required"`
+	Password string `json:"password" binding:"required"`
+}
+
+func (h *MerchantHandler) AddStaff(c *gin.Context) {
+	var req addStaffRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		apperrors.RespondError(c, apperrors.ErrValidation.Wrap(err))
+		return
+	}
+
+	staff, err := h.svc.AddStaff(c.Request.Context(), auth.TenantID(c), actorRole(c), req.Email, req.Password)
+	if err != nil {
+		apperrors.RespondError(c, err)
+		return
+	}
+	c.JSON(http.StatusCreated, toUserResponse(staff))
+}
+
+func (h *MerchantHandler) ListStaff(c *gin.Context) {
+	users, err := h.svc.ListStaff(c.Request.Context(), auth.TenantID(c), actorRole(c))
+	if err != nil {
+		apperrors.RespondError(c, err)
+		return
+	}
+
+	items := make([]UserResponse, 0, len(users))
+	for _, u := range users {
+		items = append(items, toUserResponse(u))
+	}
+	c.JSON(http.StatusOK, ListStaffResponse{Items: items, Total: len(items), Page: 1, PageSize: len(items)})
+}
+
+func (h *MerchantHandler) RemoveStaff(c *gin.Context) {
+	if err := h.svc.RemoveStaff(c.Request.Context(), auth.TenantID(c), actorRole(c), c.Param("id")); err != nil {
+		apperrors.RespondError(c, err)
+		return
+	}
+	c.Status(http.StatusNoContent)
 }
 
 func toStoreResponse(m *domain.Merchant) StoreResponse {

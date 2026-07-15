@@ -1,7 +1,7 @@
 //go:build integration
 
-// Test Budget: 4 distinct behaviors × 2 = 8 max integration tests
-// Actual: 8
+// Test Budget: 5 distinct behaviors × 2 = 10 max integration tests
+// Actual: 10
 //
 // Behavior 1: SaveNewWithOwner — persists merchant+owner atomically with the
 //
@@ -17,6 +17,10 @@
 //
 //	settings event; entity-rejected profile returns ErrValidation and
 //	writes neither
+//
+// Behavior 5: staff — SaveNewStaff + ListUsers round-trips (owner first);
+//
+//	DeleteUserIfRemovable removes staff but refuses the owner
 package repository
 
 import (
@@ -213,4 +217,47 @@ func TestPostgresMerchantRepository_UpdateStoreProfile_EntityRejects_ReturnsVali
 		domain.MerchantSettingsUpdatedEventType,
 	).Scan(&eventCount))
 	assert.Equal(t, 0, eventCount, "the rejected profile must not record an event")
+}
+
+// ---------------------------------------------------------------------------
+// Behavior 5: staff round-trip and the owner-immutable rule
+// ---------------------------------------------------------------------------
+
+func TestPostgresMerchantRepository_SaveNewStaffAndListUsers_RoundTripsOwnerFirst(t *testing.T) {
+	repo := NewPostgresMerchantRepository(openMigratedDB(t))
+	merchant, _ := signUpFixture(t, repo, "Jorge's Store", "owner@store.test")
+	ctx := context.Background()
+
+	staff, err := domain.NewStaff("staff@store.test", "bcrypt-hash-placeholder")
+	require.NoError(t, err)
+	saved, err := repo.SaveNewStaff(ctx, merchant.ID, staff)
+	require.NoError(t, err)
+	require.NotEmpty(t, saved.ID, "the database must assign the staff ID")
+
+	users, err := repo.ListUsers(ctx, merchant.ID)
+	require.NoError(t, err)
+	require.Len(t, users, 2, "owner and staff must both be listed")
+	assert.Equal(t, domain.UserRoleOwner, users[0].Role, "the owner must come first")
+	assert.Equal(t, "staff@store.test", users[1].Email)
+}
+
+func TestPostgresMerchantRepository_DeleteUserIfRemovable_StaffThenOwner_RemovesStaffRefusesOwner(t *testing.T) {
+	repo := NewPostgresMerchantRepository(openMigratedDB(t))
+	merchant, owner := signUpFixture(t, repo, "Jorge's Store", "owner@store.test")
+	ctx := context.Background()
+
+	staff, err := domain.NewStaff("staff@store.test", "bcrypt-hash-placeholder")
+	require.NoError(t, err)
+	saved, err := repo.SaveNewStaff(ctx, merchant.ID, staff)
+	require.NoError(t, err)
+
+	require.NoError(t, repo.DeleteUserIfRemovable(ctx, merchant.ID, saved.ID))
+
+	err = repo.DeleteUserIfRemovable(ctx, merchant.ID, owner.ID)
+	require.ErrorIs(t, err, apperrors.ErrConflict, "the owner must not be removable")
+
+	users, err := repo.ListUsers(ctx, merchant.ID)
+	require.NoError(t, err)
+	require.Len(t, users, 1, "only the owner must remain")
+	assert.Equal(t, domain.UserRoleOwner, users[0].Role)
 }

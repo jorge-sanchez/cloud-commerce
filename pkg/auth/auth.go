@@ -24,16 +24,20 @@ var (
 	ErrBadKey       = errors.New("key must be a base64-encoded 32-byte Ed25519 key")
 )
 
-// Claims is the platform identity carried by every token.
+// Claims is the platform identity carried by every token. Role is the
+// merchant-user role ("owner" or "staff"); tokens issued before roles
+// existed carry an empty role and hold no owner privileges.
 type Claims struct {
 	UserID   string
 	TenantID string
 	Email    string
+	Role     string
 }
 
 type jwtClaims struct {
 	TenantID string `json:"tenant_id"`
 	Email    string `json:"email"`
+	Role     string `json:"role"`
 	jwt.RegisteredClaims
 }
 
@@ -70,6 +74,7 @@ func (i *Issuer) Issue(c Claims) (string, error) {
 	token := jwt.NewWithClaims(jwt.SigningMethodEdDSA, jwtClaims{
 		TenantID: c.TenantID,
 		Email:    c.Email,
+		Role:     c.Role,
 		RegisteredClaims: jwt.RegisteredClaims{
 			Subject:   c.UserID,
 			Issuer:    issuerName,
@@ -109,7 +114,7 @@ func (v *Verifier) Verify(tokenString string) (Claims, error) {
 	if parsed.TenantID == "" || parsed.Subject == "" {
 		return Claims{}, fmt.Errorf("%w: identity claims missing", ErrInvalidToken)
 	}
-	return Claims{UserID: parsed.Subject, TenantID: parsed.TenantID, Email: parsed.Email}, nil
+	return Claims{UserID: parsed.Subject, TenantID: parsed.TenantID, Email: parsed.Email, Role: parsed.Role}, nil
 }
 
 // BearerToken extracts the compact token from an Authorization header value.
