@@ -17,6 +17,13 @@ coverage-*.out
 # Workflow tool state
 .nwave/
 
+# Terraform (lock file IS committed)
+.terraform/
+*.tfstate
+*.tfstate.*
+tfplan
+*.tfvars
+
 # Editor / OS noise
 .DS_Store
 .idea/
