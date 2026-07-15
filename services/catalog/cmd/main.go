@@ -109,6 +109,7 @@ func main() {
 	v1 := router.Group("/v1", auth.Middleware(verifier))
 	h.RegisterRoutes(v1)
 	collections.RegisterRoutes(v1)
+	h.RegisterStorefrontRoutes(router.Group("/v1", cors.Public()))
 
 	router.POST("/internal/outbox/drain",
 		outbox.DrainHandler(relay, os.Getenv("OUTBOX_DRAIN_TOKEN")))

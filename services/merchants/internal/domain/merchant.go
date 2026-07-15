@@ -50,14 +50,37 @@ func DefaultStoreSettings() StoreSettings {
 	return StoreSettings{Currency: "USD", Timezone: "UTC"}
 }
 
-// Merchant is the aggregate root. Its ID is the platform tenant ID.
+// Merchant is the aggregate root. Its ID is the platform tenant ID. Handle
+// is the public storefront URL key — globally unique, since it resolves
+// the tenant.
 type Merchant struct {
 	ID        string
 	Name      string
+	Handle    string
 	Status    MerchantStatus
 	Settings  StoreSettings
 	CreatedAt time.Time
 	UpdatedAt time.Time
+}
+
+// SlugifyHandle derives a storefront handle: lowercase, non-alphanumerics
+// collapsed to single hyphens.
+func SlugifyHandle(name string) string {
+	var b strings.Builder
+	lastHyphen := true // suppress leading hyphen
+	for _, r := range strings.ToLower(strings.TrimSpace(name)) {
+		switch {
+		case (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9'):
+			b.WriteRune(r)
+			lastHyphen = false
+		default:
+			if !lastHyphen {
+				b.WriteByte('-')
+				lastHyphen = true
+			}
+		}
+	}
+	return strings.TrimSuffix(b.String(), "-")
 }
 
 // UpdateProfile applies a new name and settings. The entity validates —
@@ -100,11 +123,16 @@ func NewMerchant(name string) (*Merchant, error) {
 	if strings.TrimSpace(name) == "" {
 		return nil, ErrEmptyName
 	}
-	return &Merchant{
+	m := &Merchant{
 		Name:     strings.TrimSpace(name),
 		Status:   MerchantStatusActive,
 		Settings: DefaultStoreSettings(),
-	}, nil
+	}
+	m.Handle = SlugifyHandle(m.Name)
+	if m.Handle == "" {
+		return nil, ErrEmptyName
+	}
+	return m, nil
 }
 
 // NewOwner constructs the owner user for a new merchant. The caller supplies
@@ -232,6 +260,9 @@ type MerchantRepository interface {
 	// GetByID returns the merchant, tenant-scoped (id IS the tenant), or
 	// apperrors.ErrNotFound.
 	GetByID(ctx context.Context, tenantID string) (*Merchant, error)
+	// GetByHandle resolves a public storefront handle. Deliberately
+	// pre-tenant: the handle is how a buyer discovers the tenant.
+	GetByHandle(ctx context.Context, handle string) (*Merchant, error)
 	// UpdateStoreProfile loads the merchant, lets the entity validate the
 	// new profile, and persists what the entity decided. Returns
 	// apperrors.ErrValidation when the entity rejects it.

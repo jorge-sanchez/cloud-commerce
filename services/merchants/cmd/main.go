@@ -99,6 +99,7 @@ func main() {
 
 	v1 := router.Group("/v1")
 	h.RegisterPublicRoutes(v1)
+	h.RegisterStorefrontRoutes(router.Group("/v1", cors.Public()))
 	h.RegisterAuthedRoutes(router.Group("/v1", auth.Middleware(verifier)))
 
 	router.POST("/internal/outbox/drain",

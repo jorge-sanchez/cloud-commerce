@@ -33,6 +33,8 @@ type MerchantService interface {
 	LogIn(ctx context.Context, email, password string) (*Session, error)
 	Me(ctx context.Context, tenantID, userID string) (*domain.Merchant, *domain.User, error)
 	GetStore(ctx context.Context, tenantID string) (*domain.Merchant, error)
+	// ResolveStore is the public storefront lookup — no auth, no tenant yet.
+	ResolveStore(ctx context.Context, handle string) (*domain.Merchant, error)
 	UpdateStore(ctx context.Context, tenantID string, actorRole domain.UserRole, name string, settings domain.StoreSettings) (*domain.Merchant, error)
 	AddStaff(ctx context.Context, tenantID string, actorRole domain.UserRole, email, password string) (*domain.User, error)
 	ListStaff(ctx context.Context, tenantID string, actorRole domain.UserRole) ([]*domain.User, error)
@@ -113,6 +115,10 @@ func (s *merchantService) Me(ctx context.Context, tenantID, userID string) (*dom
 
 func (s *merchantService) GetStore(ctx context.Context, tenantID string) (*domain.Merchant, error) {
 	return s.repo.GetByID(ctx, tenantID)
+}
+
+func (s *merchantService) ResolveStore(ctx context.Context, handle string) (*domain.Merchant, error) {
+	return s.repo.GetByHandle(ctx, handle)
 }
 
 func (s *merchantService) UpdateStore(ctx context.Context, tenantID string, actorRole domain.UserRole, name string, settings domain.StoreSettings) (*domain.Merchant, error) {

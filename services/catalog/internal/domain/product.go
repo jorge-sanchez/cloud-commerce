@@ -199,6 +199,8 @@ type ProductRepository interface {
 	// ListByTenant returns one page of products (with variants) plus the
 	// total count, newest first.
 	ListByTenant(ctx context.Context, tenantID string, page, pageSize int) ([]*Product, int, error)
+	// ListActiveByTenant is the storefront read: active products only.
+	ListActiveByTenant(ctx context.Context, tenantID string, page, pageSize int) ([]*Product, int, error)
 	// ActivateIfActivatable loads the product, lets the entity decide the
 	// transition, and persists the result. Returns apperrors.ErrConflict
 	// when the entity rejects the transition.

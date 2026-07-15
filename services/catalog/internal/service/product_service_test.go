@@ -48,6 +48,10 @@ func (f *fakeProductRepo) ListByTenant(_ context.Context, _ string, _, _ int) ([
 	return nil, 0, f.err
 }
 
+func (f *fakeProductRepo) ListActiveByTenant(_ context.Context, _ string, _, _ int) ([]*domain.Product, int, error) {
+	return nil, 0, f.err
+}
+
 func (f *fakeProductRepo) ActivateIfActivatable(_ context.Context, _, _ string) (*domain.Product, error) {
 	return f.result, f.err
 }

@@ -30,6 +30,27 @@ func (h *MerchantHandler) RegisterPublicRoutes(rg *gin.RouterGroup) {
 	rg.POST("/auth/login", h.LogIn)
 }
 
+// RegisterStorefrontRoutes mounts the buyer-facing public routes; wrap the
+// group with cors.Public() (no credentials, any origin).
+func (h *MerchantHandler) RegisterStorefrontRoutes(rg *gin.RouterGroup) {
+	rg.GET("/public/stores/:handle", h.PublicStore)
+}
+
+func (h *MerchantHandler) PublicStore(c *gin.Context) {
+	merchant, err := h.svc.ResolveStore(c.Request.Context(), c.Param("handle"))
+	if err != nil {
+		apperrors.RespondError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, PublicStoreResponse{
+		ID:       merchant.ID,
+		Name:     merchant.Name,
+		Handle:   merchant.Handle,
+		Currency: merchant.Settings.Currency,
+		Timezone: merchant.Settings.Timezone,
+	})
+}
+
 // RegisterAuthedRoutes mounts routes that require a platform token; the
 // group must be wrapped with auth.Middleware (see cmd/main.go).
 func (h *MerchantHandler) RegisterAuthedRoutes(rg *gin.RouterGroup) {
@@ -181,6 +202,7 @@ func toStoreResponse(m *domain.Merchant) StoreResponse {
 	return StoreResponse{
 		ID:           m.ID,
 		Name:         m.Name,
+		Handle:       m.Handle,
 		Status:       string(m.Status),
 		Currency:     m.Settings.Currency,
 		Timezone:     m.Settings.Timezone,

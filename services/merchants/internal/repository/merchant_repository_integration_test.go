@@ -1,7 +1,7 @@
 //go:build integration
 
-// Test Budget: 5 distinct behaviors × 2 = 10 max integration tests
-// Actual: 10
+// Test Budget: 6 distinct behaviors × 2 = 12 max integration tests
+// Actual: 12
 //
 // Behavior 1: SaveNewWithOwner — persists merchant+owner atomically with the
 //
@@ -21,6 +21,10 @@
 // Behavior 5: staff — SaveNewStaff + ListUsers round-trips (owner first);
 //
 //	DeleteUserIfRemovable removes staff but refuses the owner
+//
+// Behavior 6: GetByHandle — public storefront lookup resolves the slugified
+//
+//	handle; unknown handles are ErrNotFound
 package repository
 
 import (
@@ -260,4 +264,27 @@ func TestPostgresMerchantRepository_DeleteUserIfRemovable_StaffThenOwner_Removes
 	require.NoError(t, err)
 	require.Len(t, users, 1, "only the owner must remain")
 	assert.Equal(t, domain.UserRoleOwner, users[0].Role)
+}
+
+// ---------------------------------------------------------------------------
+// Behavior 6: GetByHandle resolves the public storefront handle
+// ---------------------------------------------------------------------------
+
+func TestPostgresMerchantRepository_GetByHandle_SignedUpStore_Resolves(t *testing.T) {
+	repo := NewPostgresMerchantRepository(openMigratedDB(t))
+	merchant, _ := signUpFixture(t, repo, "Jorge's Store!", "owner@store.test")
+
+	got, err := repo.GetByHandle(context.Background(), "jorge-s-store")
+
+	require.NoError(t, err)
+	assert.Equal(t, merchant.ID, got.ID, "the handle must resolve the tenant")
+	assert.Equal(t, "jorge-s-store", got.Handle)
+}
+
+func TestPostgresMerchantRepository_GetByHandle_Unknown_ReturnsNotFound(t *testing.T) {
+	repo := NewPostgresMerchantRepository(openMigratedDB(t))
+
+	_, err := repo.GetByHandle(context.Background(), "no-such-store")
+
+	require.ErrorIs(t, err, apperrors.ErrNotFound)
 }

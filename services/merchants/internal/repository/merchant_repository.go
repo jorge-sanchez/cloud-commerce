@@ -4,7 +4,9 @@ package repository
 
 import (
 	"context"
+	"crypto/rand"
 	"database/sql"
+	"encoding/hex"
 	"errors"
 	"time"
 
@@ -57,12 +59,21 @@ func (r *PostgresMerchantRepository) SaveNewWithOwner(ctx context.Context, m *do
 	defer func() { _ = tx.Rollback() }()
 
 	merchant := *m
-	err = tx.QueryRowContext(ctx, `
-		INSERT INTO merchants (name, status, currency, timezone, support_email)
-		VALUES ($1, $2, $3, $4, $5)
-		RETURNING id, created_at, updated_at`,
-		m.Name, string(m.Status), m.Settings.Currency, m.Settings.Timezone, m.Settings.SupportEmail,
-	).Scan(&merchant.ID, &merchant.CreatedAt, &merchant.UpdatedAt)
+	insert := func(handle string) error {
+		merchant.Handle = handle
+		return tx.QueryRowContext(ctx, `
+			INSERT INTO merchants (name, handle, status, currency, timezone, support_email)
+			VALUES ($1, $2, $3, $4, $5, $6)
+			RETURNING id, created_at, updated_at`,
+			m.Name, handle, string(m.Status), m.Settings.Currency, m.Settings.Timezone, m.Settings.SupportEmail,
+		).Scan(&merchant.ID, &merchant.CreatedAt, &merchant.UpdatedAt)
+	}
+	err = insert(m.Handle)
+	var pqErr *pq.Error
+	if errors.As(err, &pqErr) && string(pqErr.Code) == uniqueViolation {
+		// Handle taken by another store: retry once with a random suffix.
+		err = insert(m.Handle + "-" + randomSuffix())
+	}
 	if err != nil {
 		return nil, nil, apperrors.ErrInternal.Wrap(err)
 	}
@@ -126,11 +137,23 @@ func (r *PostgresMerchantRepository) GetMerchantWithUser(ctx context.Context, te
 	return merchant, user, nil
 }
 
-const merchantColumns = `id, name, status, currency, timezone, support_email, created_at, updated_at`
+const merchantColumns = `id, name, handle, status, currency, timezone, support_email, created_at, updated_at`
 
 func (r *PostgresMerchantRepository) GetByID(ctx context.Context, tenantID string) (*domain.Merchant, error) {
 	return r.scanMerchant(r.db.QueryRowContext(ctx,
 		`SELECT `+merchantColumns+` FROM merchants WHERE id = $1`, tenantID))
+}
+
+func (r *PostgresMerchantRepository) GetByHandle(ctx context.Context, handle string) (*domain.Merchant, error) {
+	return r.scanMerchant(r.db.QueryRowContext(ctx,
+		`SELECT `+merchantColumns+` FROM merchants WHERE handle = $1`, handle))
+}
+
+// randomSuffix returns four hex characters for handle collision retries.
+func randomSuffix() string {
+	var b [2]byte
+	_, _ = rand.Read(b[:])
+	return hex.EncodeToString(b[:])
 }
 
 // UpdateStoreProfile loads the merchant inside a transaction, lets the
@@ -183,7 +206,7 @@ func (r *PostgresMerchantRepository) UpdateStoreProfile(ctx context.Context, ten
 func (r *PostgresMerchantRepository) scanMerchant(row *sql.Row) (*domain.Merchant, error) {
 	var m domain.Merchant
 	var status string
-	err := row.Scan(&m.ID, &m.Name, &status, &m.Settings.Currency, &m.Settings.Timezone,
+	err := row.Scan(&m.ID, &m.Name, &m.Handle, &status, &m.Settings.Currency, &m.Settings.Timezone,
 		&m.Settings.SupportEmail, &m.CreatedAt, &m.UpdatedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, apperrors.ErrNotFound
