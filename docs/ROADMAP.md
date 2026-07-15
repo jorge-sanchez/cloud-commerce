@@ -93,6 +93,11 @@ admin SPA are live on Cloud Run; the event backbone runs on Pub/Sub
 **Exit criteria:** a buyer completes a paid order end-to-end; the merchant
 sees it in the admin; payment webhooks reconcile order state.
 
+*Status: **done** (2026-07-15) — cart → checkout → Stripe test-mode payment
+→ order paid → stock decremented, all live on Cloud Run (ADR-008). Webhook
+reconciliation is tracked as a follow-up (#25); confirmation is
+buyer-initiated polling until then.*
+
 ## Phase 3 — Operations
 
 What a merchant needs the week after their first sale.
