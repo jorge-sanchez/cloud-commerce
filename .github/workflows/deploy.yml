@@ -72,7 +72,7 @@ jobs:
               SECRETS="$SECRETS,JWT_PRIVATE_KEY=jwt-private-key:latest"
             fi
             if [ "${{ inputs.service }}" = "orders" ]; then
-              SECRETS="$SECRETS,FAKE_PAYMENT_SECRET=orders-fake-payment-secret:latest"
+              SECRETS="$SECRETS,STRIPE_SECRET_KEY=stripe-secret-key:latest"
             fi
             SECRET_FLAG="--set-secrets=$SECRETS"
           fi
@@ -92,6 +92,7 @@ jobs:
             ENV_VARS="$ENV_VARS,MERCHANTS_URL=https://merchants-bjm36sbwlq-uc.a.run.app"
             ENV_VARS="$ENV_VARS,CATALOG_URL=https://catalog-bjm36sbwlq-uc.a.run.app"
             ENV_VARS="$ENV_VARS,PUBSUB_TOPIC=orders-events"
+            ENV_VARS="$ENV_VARS,PAYMENT_PROVIDER=stripe"
           fi
           if [ "${{ inputs.service }}" = "inventory" ]; then
             # Pub/Sub push auth: only this SA, with this audience.

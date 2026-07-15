@@ -15,6 +15,7 @@ require (
 	github.com/jorge-sanchez/cloud-commerce/pkg/testdb v0.0.0-00010101000000-000000000000
 	github.com/lib/pq v1.12.3
 	github.com/stretchr/testify v1.11.1
+	github.com/stripe/stripe-go/v82 v82.5.1
 	go.uber.org/zap v1.28.0
 )
 
