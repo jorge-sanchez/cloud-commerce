@@ -1,0 +1,17 @@
+# TypeScript type generation from Go wire structs (ADR-007).
+# The backend's apitypes.go files own every wire shape — the admin SPA
+# imports these generated mirrors, so drift is a compile error.
+# Regenerate: make types   (CI fails if generated files are stale)
+packages:
+  - path: github.com/jorge-sanchez/cloud-commerce/services/merchants/internal/handler
+    output_path: services/admin/web/src/types/merchants.ts
+    type_mappings:
+      time.Time: "string /* RFC 3339 */"
+  - path: github.com/jorge-sanchez/cloud-commerce/services/catalog/internal/handler
+    output_path: services/admin/web/src/types/catalog.ts
+    type_mappings:
+      time.Time: "string /* RFC 3339 */"
+  - path: github.com/jorge-sanchez/cloud-commerce/services/inventory/internal/handler
+    output_path: services/admin/web/src/types/inventory.ts
+    type_mappings:
+      time.Time: "string /* RFC 3339 */"

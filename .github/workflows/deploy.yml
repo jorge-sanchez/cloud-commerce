@@ -48,6 +48,8 @@ jobs:
       - name: Run migrations
         # DATABASE_URL lives in Secret Manager as <service>-database-url;
         # the deployer SA reads it here so the URL never touches GitHub.
+        # Services without migrations (admin: static SPA host) skip this.
+        if: ${{ inputs.service != 'admin' }}
         run: |
           DATABASE_URL=$(gcloud secrets versions access latest \
             --secret="${{ inputs.service }}-database-url" \
@@ -59,12 +61,17 @@ jobs:
       - name: Deploy to Cloud Run
         run: |
           # Every service verifies platform tokens; only merchants — the
-          # identity issuer (ADR-006) — receives the private key.
-          SECRETS="DATABASE_URL=${{ inputs.service }}-database-url:latest"
-          SECRETS="$SECRETS,OUTBOX_DRAIN_TOKEN=${{ inputs.service }}-drain-token:latest"
-          SECRETS="$SECRETS,JWT_PUBLIC_KEY=jwt-public-key:latest"
-          if [ "${{ inputs.service }}" = "merchants" ]; then
-            SECRETS="$SECRETS,JWT_PRIVATE_KEY=jwt-private-key:latest"
+          # identity issuer (ADR-006) — receives the private key. The admin
+          # SPA host has no database and no secrets at all.
+          SECRET_FLAG=""
+          if [ "${{ inputs.service }}" != "admin" ]; then
+            SECRETS="DATABASE_URL=${{ inputs.service }}-database-url:latest"
+            SECRETS="$SECRETS,OUTBOX_DRAIN_TOKEN=${{ inputs.service }}-drain-token:latest"
+            SECRETS="$SECRETS,JWT_PUBLIC_KEY=jwt-public-key:latest"
+            if [ "${{ inputs.service }}" = "merchants" ]; then
+              SECRETS="$SECRETS,JWT_PRIVATE_KEY=jwt-private-key:latest"
+            fi
+            SECRET_FLAG="--set-secrets=$SECRETS"
           fi
           ENV_VARS="APP_ENV=production"
           case "${{ inputs.service }}" in
@@ -91,7 +98,7 @@ jobs:
             --min-instances=0 \
             --max-instances=3 \
             --set-env-vars="$ENV_VARS" \
-            --set-secrets="$SECRETS"
+            $SECRET_FLAG
 
       - name: Report URL
         run: |
