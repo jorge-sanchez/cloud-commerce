@@ -14,5 +14,6 @@ use (
 	./services/example
 	./services/inventory
 	./services/merchants
+	./services/notifications
 	./services/orders
 )
