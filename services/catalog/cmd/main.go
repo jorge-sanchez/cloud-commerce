@@ -15,6 +15,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/jorge-sanchez/cloud-commerce/pkg/auth"
+	"github.com/jorge-sanchez/cloud-commerce/pkg/cors"
 	apperrors "github.com/jorge-sanchez/cloud-commerce/pkg/errors"
 	"github.com/jorge-sanchez/cloud-commerce/pkg/events"
 	"github.com/jorge-sanchez/cloud-commerce/pkg/logger"
@@ -99,6 +100,7 @@ func main() {
 	router.Use(gin.Recovery())
 	router.Use(logger.GinMiddleware(log))
 	router.Use(apperrors.ErrorHandler())
+	router.Use(cors.Middleware(os.Getenv("CORS_ALLOWED_ORIGINS")))
 
 	router.GET("/health", func(c *gin.Context) {
 		c.Status(http.StatusOK)
