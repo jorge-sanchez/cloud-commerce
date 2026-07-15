@@ -75,7 +75,7 @@ jobs:
           fi
           ENV_VARS="APP_ENV=production"
           case "${{ inputs.service }}" in
-            merchants|catalog|inventory)
+            merchants|catalog|inventory|orders)
               # The admin SPA (ADR-007) calls these APIs cross-origin.
               ENV_VARS="$ENV_VARS,CORS_ALLOWED_ORIGINS=https://admin-bjm36sbwlq-uc.a.run.app"
               ;;
@@ -83,6 +83,11 @@ jobs:
           if [ "${{ inputs.service }}" = "catalog" ]; then
             # Relay transport: publish outbox envelopes to Pub/Sub (ADR-002).
             ENV_VARS="$ENV_VARS,PUBSUB_TOPIC=catalog-events"
+          fi
+          if [ "${{ inputs.service }}" = "orders" ]; then
+            # Checkout resolves stores and snapshots prices via public APIs.
+            ENV_VARS="$ENV_VARS,MERCHANTS_URL=https://merchants-bjm36sbwlq-uc.a.run.app"
+            ENV_VARS="$ENV_VARS,CATALOG_URL=https://catalog-bjm36sbwlq-uc.a.run.app"
           fi
           if [ "${{ inputs.service }}" = "inventory" ]; then
             # Pub/Sub push auth: only this SA, with this audience.

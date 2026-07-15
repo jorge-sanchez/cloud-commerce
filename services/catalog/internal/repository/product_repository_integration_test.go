@@ -1,7 +1,7 @@
 //go:build integration
 
-// Test Budget: 5 distinct behaviors × 2 = 10 max integration tests
-// Actual: 8
+// Test Budget: 6 distinct behaviors × 2 = 12 max integration tests
+// Actual: 10
 //
 // Behavior 1: SaveNewWithVariants — persists the aggregate atomically with
 //
@@ -21,6 +21,7 @@
 //	with the activated event; entity-rejected transition changes nothing
 //
 // Behavior 5: ListActiveByTenant — the storefront read excludes drafts
+// Behavior 6: GetActiveVariant — resolves purchasable variants only
 package repository
 
 import (
@@ -212,4 +213,33 @@ func TestPostgresProductRepository_ListActiveByTenant_MixedStatuses_ReturnsOnlyA
 	assert.Equal(t, 1, total)
 	require.Len(t, products, 1, "drafts must not appear on the storefront")
 	assert.Equal(t, "TS-LIVE", products[0].Variants[0].SKU)
+}
+
+// ---------------------------------------------------------------------------
+// Behavior 6: GetActiveVariant resolves purchasable variants only
+// ---------------------------------------------------------------------------
+
+func TestPostgresProductRepository_GetActiveVariant_ActiveProduct_ReturnsSnapshot(t *testing.T) {
+	repo := NewPostgresProductRepository(openMigratedDB(t))
+	ctx := context.Background()
+	saved, err := repo.SaveNewWithVariants(ctx, tenantA, shirtFixture(t, "TS-S"))
+	require.NoError(t, err)
+	_, err = repo.ActivateIfActivatable(ctx, tenantA, saved.ID)
+	require.NoError(t, err)
+
+	got, err := repo.GetActiveVariant(ctx, tenantA, saved.Variants[0].ID)
+
+	require.NoError(t, err)
+	assert.Equal(t, "T-Shirt", got.ProductTitle)
+	assert.Equal(t, int64(1990), got.PriceCents)
+}
+
+func TestPostgresProductRepository_GetActiveVariant_DraftProduct_ReturnsNotFound(t *testing.T) {
+	repo := NewPostgresProductRepository(openMigratedDB(t))
+	saved, err := repo.SaveNewWithVariants(context.Background(), tenantA, shirtFixture(t, "TS-S"))
+	require.NoError(t, err)
+
+	_, err = repo.GetActiveVariant(context.Background(), tenantA, saved.Variants[0].ID)
+
+	require.ErrorIs(t, err, apperrors.ErrNotFound, "draft products must not be purchasable")
 }

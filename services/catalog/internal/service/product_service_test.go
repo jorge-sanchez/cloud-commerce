@@ -52,6 +52,10 @@ func (f *fakeProductRepo) ListActiveByTenant(_ context.Context, _ string, _, _ i
 	return nil, 0, f.err
 }
 
+func (f *fakeProductRepo) GetActiveVariant(_ context.Context, _, _ string) (*domain.VariantLookup, error) {
+	return nil, f.err
+}
+
 func (f *fakeProductRepo) ActivateIfActivatable(_ context.Context, _, _ string) (*domain.Product, error) {
 	return f.result, f.err
 }

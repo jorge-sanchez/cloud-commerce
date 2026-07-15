@@ -188,6 +188,17 @@ func NewProductActivatedEvent(p *Product, at time.Time) ProductActivatedEvent {
 	return ProductActivatedEvent{ProductID: p.ID, TenantID: p.TenantID, Title: p.Title, ActivatedAt: at}
 }
 
+// VariantLookup is the storefront's purchasable-variant read: the variant
+// plus the parent product's title, only while the product is active.
+type VariantLookup struct {
+	VariantID    string
+	ProductID    string
+	ProductTitle string
+	SKU          string
+	OptionValues []string
+	PriceCents   int64
+}
+
 // ProductRepository is the persistence port for the Product aggregate.
 type ProductRepository interface {
 	// SaveNewWithVariants persists the product and all its variants in one
@@ -201,6 +212,9 @@ type ProductRepository interface {
 	ListByTenant(ctx context.Context, tenantID string, page, pageSize int) ([]*Product, int, error)
 	// ListActiveByTenant is the storefront read: active products only.
 	ListActiveByTenant(ctx context.Context, tenantID string, page, pageSize int) ([]*Product, int, error)
+	// GetActiveVariant returns a purchasable variant (its product must be
+	// active), or apperrors.ErrNotFound.
+	GetActiveVariant(ctx context.Context, tenantID, variantID string) (*VariantLookup, error)
 	// ActivateIfActivatable loads the product, lets the entity decide the
 	// transition, and persists the result. Returns apperrors.ErrConflict
 	// when the entity rejects the transition.
