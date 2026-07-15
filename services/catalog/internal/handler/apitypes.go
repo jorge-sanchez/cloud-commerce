@@ -35,3 +35,22 @@ type ListProductsResponse struct {
 	Page     int               `json:"page"`
 	PageSize int               `json:"page_size"`
 }
+
+// CollectionResponse is the single-collection wire shape. ProductIDs is
+// populated on single fetches, empty in list responses.
+type CollectionResponse struct {
+	ID         string    `json:"id"`
+	Title      string    `json:"title"`
+	Handle     string    `json:"handle"`
+	ProductIDs []string  `json:"product_ids"`
+	CreatedAt  time.Time `json:"created_at"`
+	UpdatedAt  time.Time `json:"updated_at"`
+}
+
+// ListCollectionsResponse is the blessed offset-pagination envelope.
+type ListCollectionsResponse struct {
+	Items    []CollectionResponse `json:"items"`
+	Total    int                  `json:"total"`
+	Page     int                  `json:"page"`
+	PageSize int                  `json:"page_size"`
+}
