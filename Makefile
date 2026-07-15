@@ -1,4 +1,4 @@
-# Go Service Template — Developer Makefile
+# Cloud Commerce — Developer Makefile
 
 DATABASE_URL ?= postgres://app:app@localhost:5432/app?sslmode=disable
 

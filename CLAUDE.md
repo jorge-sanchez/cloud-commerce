@@ -1,4 +1,4 @@
-# CLAUDE.md — Go Service Template
+# CLAUDE.md — Cloud Commerce
 
 Coding conventions and architectural rules for this codebase. Follow these exactly.
 
