@@ -1,7 +1,7 @@
 //go:build integration
 
-// Test Budget: 4 distinct behaviors × 2 = 8 max integration tests
-// Actual: 7
+// Test Budget: 5 distinct behaviors × 2 = 10 max integration tests
+// Actual: 9
 //
 // Behavior 1: EnsureDefaultLocation + InitializeStock — idempotent under
 //
@@ -16,6 +16,7 @@
 //	ErrNotFound
 //
 // Behavior 4: ListStockByTenant — pages stock with totals
+// Behavior 5: ApplyStockDeduction — clamps at zero and replays are no-ops
 package repository
 
 import (
@@ -173,4 +174,47 @@ func TestPostgresStockRepository_ListStockByTenant_ReturnsPageAndTotal(t *testin
 	assert.Equal(t, 2, total)
 	require.Len(t, levels, 1, "page size must be honored")
 	assert.Equal(t, "TS-M", levels[0].SKU, "stock is ordered by SKU")
+}
+
+// ---------------------------------------------------------------------------
+// Behavior 5: ApplyStockDeduction clamps and dedupes
+// ---------------------------------------------------------------------------
+
+func TestPostgresStockRepository_ApplyStockDeduction_OverOnHand_ClampsAtZero(t *testing.T) {
+	repo := NewPostgresStockRepository(openMigratedDB(t))
+	location := initializedStock(t, repo)
+	_, err := repo.AdjustIfSufficient(context.Background(), tenantA, location.ID, variant1, 3)
+	require.NoError(t, err)
+
+	err = repo.ApplyStockDeduction(context.Background(), tenantA, "eeeeeeee-0000-0000-0000-000000000001",
+		[]domain.StockDeduction{{VariantID: variant1, Qty: 5}})
+
+	require.NoError(t, err, "a paid order must apply even when stock drifted")
+	levels, _, err := repo.ListStockByTenant(context.Background(), tenantA, 1, 20)
+	require.NoError(t, err)
+	for _, l := range levels {
+		if l.VariantID == variant1 {
+			assert.Equal(t, int64(0), l.OnHand, "the deduction must clamp at zero, never negative")
+		}
+	}
+}
+
+func TestPostgresStockRepository_ApplyStockDeduction_ReplayedEvent_IsNoOp(t *testing.T) {
+	repo := NewPostgresStockRepository(openMigratedDB(t))
+	location := initializedStock(t, repo)
+	_, err := repo.AdjustIfSufficient(context.Background(), tenantA, location.ID, variant1, 10)
+	require.NoError(t, err)
+
+	const eventID = "eeeeeeee-0000-0000-0000-000000000002"
+	deduct := []domain.StockDeduction{{VariantID: variant1, Qty: 4}}
+	require.NoError(t, repo.ApplyStockDeduction(context.Background(), tenantA, eventID, deduct))
+	require.NoError(t, repo.ApplyStockDeduction(context.Background(), tenantA, eventID, deduct))
+
+	levels, _, err := repo.ListStockByTenant(context.Background(), tenantA, 1, 20)
+	require.NoError(t, err)
+	for _, l := range levels {
+		if l.VariantID == variant1 {
+			assert.Equal(t, int64(6), l.OnHand, "a replayed event must deduct exactly once")
+		}
+	}
 }

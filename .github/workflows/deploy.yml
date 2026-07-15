@@ -71,6 +71,9 @@ jobs:
             if [ "${{ inputs.service }}" = "merchants" ]; then
               SECRETS="$SECRETS,JWT_PRIVATE_KEY=jwt-private-key:latest"
             fi
+            if [ "${{ inputs.service }}" = "orders" ]; then
+              SECRETS="$SECRETS,FAKE_PAYMENT_SECRET=orders-fake-payment-secret:latest"
+            fi
             SECRET_FLAG="--set-secrets=$SECRETS"
           fi
           ENV_VARS="APP_ENV=production"
@@ -88,6 +91,7 @@ jobs:
             # Checkout resolves stores and snapshots prices via public APIs.
             ENV_VARS="$ENV_VARS,MERCHANTS_URL=https://merchants-bjm36sbwlq-uc.a.run.app"
             ENV_VARS="$ENV_VARS,CATALOG_URL=https://catalog-bjm36sbwlq-uc.a.run.app"
+            ENV_VARS="$ENV_VARS,PUBSUB_TOPIC=orders-events"
           fi
           if [ "${{ inputs.service }}" = "inventory" ]; then
             # Pub/Sub push auth: only this SA, with this audience.

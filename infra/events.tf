@@ -67,3 +67,45 @@ resource "google_pubsub_subscription" "catalog_events_inventory" {
 
   depends_on = [google_service_account_iam_member.pubsub_agent_token_creator]
 }
+
+# --- orders-events: paid orders drive stock (issue #18) ----------------------
+
+resource "google_pubsub_topic" "orders_events" {
+  name = "orders-events"
+
+  depends_on = [google_project_service.apis]
+}
+
+resource "google_pubsub_topic_iam_member" "orders_publisher" {
+  topic  = google_pubsub_topic.orders_events.name
+  role   = "roles/pubsub.publisher"
+  member = "serviceAccount:${google_service_account.run_services.email}"
+}
+
+resource "google_pubsub_subscription" "orders_events_inventory" {
+  name  = "orders-events-inventory"
+  topic = google_pubsub_topic.orders_events.id
+
+  ack_deadline_seconds = 30
+
+  push_config {
+    push_endpoint = var.inventory_push_endpoint
+
+    oidc_token {
+      service_account_email = google_service_account.pubsub_pusher.email
+      audience              = var.inventory_push_endpoint
+    }
+  }
+
+  retry_policy {
+    minimum_backoff = "10s"
+    maximum_backoff = "600s"
+  }
+
+  expiration_policy {
+    ttl = ""
+  }
+  message_retention_duration = "604800s"
+
+  depends_on = [google_service_account_iam_member.pubsub_agent_token_creator]
+}
