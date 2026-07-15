@@ -67,6 +67,12 @@ jobs:
             SECRETS="$SECRETS,JWT_PRIVATE_KEY=jwt-private-key:latest"
           fi
           ENV_VARS="APP_ENV=production"
+          case "${{ inputs.service }}" in
+            merchants|catalog|inventory)
+              # The admin SPA (ADR-007) calls these APIs cross-origin.
+              ENV_VARS="$ENV_VARS,CORS_ALLOWED_ORIGINS=https://admin-bjm36sbwlq-uc.a.run.app"
+              ;;
+          esac
           if [ "${{ inputs.service }}" = "catalog" ]; then
             # Relay transport: publish outbox envelopes to Pub/Sub (ADR-002).
             ENV_VARS="$ENV_VARS,PUBSUB_TOPIC=catalog-events"

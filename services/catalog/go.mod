@@ -62,6 +62,7 @@ require (
 	github.com/jackc/pgservicefile v0.0.0-20240606120523-5a60cdf6a761 // indirect
 	github.com/jackc/pgx/v5 v5.10.0 // indirect
 	github.com/jackc/puddle/v2 v2.2.2 // indirect
+	github.com/jorge-sanchez/cloud-commerce/pkg/cors v0.0.0
 	github.com/json-iterator/go v1.1.12 // indirect
 	github.com/klauspost/compress v1.18.5 // indirect
 	github.com/klauspost/cpuid/v2 v2.3.0 // indirect
@@ -135,3 +136,5 @@ replace github.com/jorge-sanchez/cloud-commerce/pkg/outbox => ../../pkg/outbox
 replace github.com/jorge-sanchez/cloud-commerce/pkg/pagination => ../../pkg/pagination
 
 replace github.com/jorge-sanchez/cloud-commerce/pkg/testdb => ../../pkg/testdb
+
+replace github.com/jorge-sanchez/cloud-commerce/pkg/cors => ../../pkg/cors
