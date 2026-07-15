@@ -72,6 +72,11 @@ The nouns of commerce, before any selling happens.
 **Exit criteria:** a merchant can sign up and fully manage a catalog and
 stock through the admin UI.
 
+*Status: **done** (2026-07-15) — merchants, catalog, inventory, and the
+admin SPA are live on Cloud Run; the event backbone runs on Pub/Sub
+(ADR-002 amendment); the admin UI is https://admin-bjm36sbwlq-uc.a.run.app
+(ADR-007).*
+
 ## Phase 2 — Selling ("first dollar")
 
 - **Cart & checkout service** — cart lifecycle, totals, checkout session.
