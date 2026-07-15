@@ -82,6 +82,10 @@ func (f *fakeOrderRepo) ListByTenant(_ context.Context, _ string, _, _ int) ([]*
 	return nil, 0, f.err
 }
 
+func (f *fakeOrderRepo) GetSalesSummary(_ context.Context, _ string, _ int) (*domain.SalesSummary, error) {
+	return &domain.SalesSummary{}, f.err
+}
+
 var _ Platform = (*fakePlatform)(nil)
 
 type fakePlatform struct {

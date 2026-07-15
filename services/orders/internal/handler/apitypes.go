@@ -54,3 +54,25 @@ type ListOrdersResponse struct {
 	Page     int             `json:"page"`
 	PageSize int             `json:"page_size"`
 }
+
+// DailySalesResponse is one day of revenue.
+type DailySalesResponse struct {
+	Date         string `json:"date"`
+	RevenueCents int64  `json:"revenue_cents"`
+	Orders       int    `json:"orders"`
+}
+
+// TopProductResponse is a best-selling variant.
+type TopProductResponse struct {
+	SKU          string `json:"sku"`
+	Title        string `json:"title"`
+	Units        int64  `json:"units"`
+	RevenueCents int64  `json:"revenue_cents"`
+}
+
+// AnalyticsSummaryResponse is the merchant analytics read.
+type AnalyticsSummaryResponse struct {
+	Currency    string               `json:"currency"`
+	Days        []DailySalesResponse `json:"days"`
+	TopProducts []TopProductResponse `json:"top_products"`
+}

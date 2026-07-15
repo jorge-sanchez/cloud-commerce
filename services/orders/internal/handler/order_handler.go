@@ -5,6 +5,7 @@ package handler
 
 import (
 	"net/http"
+	"strconv"
 
 	"github.com/gin-gonic/gin"
 
@@ -77,6 +78,28 @@ func (h *OrderHandler) RegisterMerchantRoutes(rg *gin.RouterGroup) {
 	rg.GET("/orders/:id", h.GetOrder)
 	rg.POST("/orders/:id/fulfill", h.FulfillOrder)
 	rg.POST("/orders/:id/refund", h.RefundOrder)
+	rg.GET("/analytics/summary", h.Analytics)
+}
+
+func (h *OrderHandler) Analytics(c *gin.Context) {
+	days, _ := strconv.Atoi(c.DefaultQuery("days", "30"))
+	summary, err := h.svc.GetAnalytics(c.Request.Context(), auth.TenantID(c), days)
+	if err != nil {
+		apperrors.RespondError(c, err)
+		return
+	}
+	resp := AnalyticsSummaryResponse{
+		Currency:    summary.Currency,
+		Days:        make([]DailySalesResponse, 0, len(summary.Days)),
+		TopProducts: make([]TopProductResponse, 0, len(summary.TopProducts)),
+	}
+	for _, d := range summary.Days {
+		resp.Days = append(resp.Days, DailySalesResponse{Date: d.Date, RevenueCents: d.RevenueCents, Orders: d.Orders})
+	}
+	for _, t := range summary.TopProducts {
+		resp.TopProducts = append(resp.TopProducts, TopProductResponse{SKU: t.SKU, Title: t.Title, Units: t.Units, RevenueCents: t.RevenueCents})
+	}
+	c.JSON(http.StatusOK, resp)
 }
 
 func (h *OrderHandler) RefundOrder(c *gin.Context) {

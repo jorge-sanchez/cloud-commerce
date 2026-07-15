@@ -275,6 +275,28 @@ func eventItems(o *Order) []EventItem {
 	return items
 }
 
+// DailySales is one day of revenue (paid + fulfilled orders).
+type DailySales struct {
+	Date         string
+	RevenueCents int64
+	Orders       int
+}
+
+// TopProduct is a best-selling variant by units.
+type TopProduct struct {
+	SKU          string
+	Title        string
+	Units        int64
+	RevenueCents int64
+}
+
+// SalesSummary is the merchant analytics read.
+type SalesSummary struct {
+	Currency    string
+	Days        []DailySales
+	TopProducts []TopProduct
+}
+
 // OrderRepository is the persistence port for carts and orders.
 type OrderRepository interface {
 	// SaveNewCart persists an empty cart bound to a tenant and currency.
@@ -306,4 +328,7 @@ type OrderRepository interface {
 	GetPublicByID(ctx context.Context, orderID string) (*Order, error)
 	// ListByTenant returns one page of orders (with items), newest first.
 	ListByTenant(ctx context.Context, tenantID string, page, pageSize int) ([]*Order, int, error)
+	// GetSalesSummary aggregates revenue per day and top variants over the
+	// last N days (paid and fulfilled orders count; refunds do not).
+	GetSalesSummary(ctx context.Context, tenantID string, days int) (*SalesSummary, error)
 }
