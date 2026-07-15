@@ -1,4 +1,4 @@
-module github.com/jorge-sanchez/go-service-template/pkg/logger
+module github.com/jorge-sanchez/cloud-commerce/pkg/logger
 
 go 1.25.0
 

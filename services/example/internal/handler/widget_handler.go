@@ -8,10 +8,10 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	apperrors "github.com/jorge-sanchez/go-service-template/pkg/errors"
-	"github.com/jorge-sanchez/go-service-template/pkg/pagination"
-	"github.com/jorge-sanchez/go-service-template/services/example/internal/domain"
-	"github.com/jorge-sanchez/go-service-template/services/example/internal/service"
+	apperrors "github.com/jorge-sanchez/cloud-commerce/pkg/errors"
+	"github.com/jorge-sanchez/cloud-commerce/pkg/pagination"
+	"github.com/jorge-sanchez/cloud-commerce/services/example/internal/domain"
+	"github.com/jorge-sanchez/cloud-commerce/services/example/internal/service"
 )
 
 // WidgetHandler exposes the widget HTTP surface.

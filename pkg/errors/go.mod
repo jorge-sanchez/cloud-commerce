@@ -1,4 +1,4 @@
-module github.com/jorge-sanchez/go-service-template/pkg/errors
+module github.com/jorge-sanchez/cloud-commerce/pkg/errors
 
 go 1.25.0
 

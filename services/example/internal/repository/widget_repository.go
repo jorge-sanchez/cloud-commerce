@@ -7,8 +7,8 @@ import (
 	"database/sql"
 	"errors"
 
-	apperrors "github.com/jorge-sanchez/go-service-template/pkg/errors"
-	"github.com/jorge-sanchez/go-service-template/services/example/internal/domain"
+	apperrors "github.com/jorge-sanchez/cloud-commerce/pkg/errors"
+	"github.com/jorge-sanchez/cloud-commerce/services/example/internal/domain"
 )
 
 // PostgresWidgetRepository implements domain.WidgetRepository on PostgreSQL.

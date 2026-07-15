@@ -10,7 +10,7 @@ import (
 	"go.uber.org/zap/zapcore"
 	"go.uber.org/zap/zaptest/observer"
 
-	"github.com/jorge-sanchez/go-service-template/pkg/logger"
+	"github.com/jorge-sanchez/cloud-commerce/pkg/logger"
 )
 
 // ---------------------------------------------------------------------------

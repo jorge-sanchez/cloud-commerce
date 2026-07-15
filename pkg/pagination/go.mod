@@ -1,4 +1,4 @@
-module github.com/jorge-sanchez/go-service-template/pkg/pagination
+module github.com/jorge-sanchez/cloud-commerce/pkg/pagination
 
 go 1.25.0
 

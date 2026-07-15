@@ -21,7 +21,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 
-	"github.com/jorge-sanchez/go-service-template/pkg/pagination"
+	"github.com/jorge-sanchez/cloud-commerce/pkg/pagination"
 )
 
 // captureParams builds a minimal gin.Context from a raw URL query string and

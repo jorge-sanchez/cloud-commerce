@@ -27,4 +27,4 @@ formatters:
   settings:
     goimports:
       local-prefixes:
-        - github.com/jorge-sanchez/go-service-template
+        - github.com/jorge-sanchez/cloud-commerce

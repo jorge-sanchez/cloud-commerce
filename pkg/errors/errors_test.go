@@ -9,7 +9,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	apperrors "github.com/jorge-sanchez/go-service-template/pkg/errors"
+	apperrors "github.com/jorge-sanchez/cloud-commerce/pkg/errors"
 )
 
 func TestSentinels_ErrorMethod(t *testing.T) {

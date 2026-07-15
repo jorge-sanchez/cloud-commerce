@@ -22,9 +22,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	apperrors "github.com/jorge-sanchez/go-service-template/pkg/errors"
-	"github.com/jorge-sanchez/go-service-template/pkg/testdb"
-	"github.com/jorge-sanchez/go-service-template/services/example/internal/domain"
+	apperrors "github.com/jorge-sanchez/cloud-commerce/pkg/errors"
+	"github.com/jorge-sanchez/cloud-commerce/pkg/testdb"
+	"github.com/jorge-sanchez/cloud-commerce/services/example/internal/domain"
 )
 
 // openMigratedDB provisions an isolated database (shared server in CI,

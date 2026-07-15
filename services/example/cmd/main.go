@@ -13,11 +13,11 @@ import (
 
 	"go.uber.org/zap"
 
-	apperrors "github.com/jorge-sanchez/go-service-template/pkg/errors"
-	"github.com/jorge-sanchez/go-service-template/pkg/logger"
-	"github.com/jorge-sanchez/go-service-template/services/example/internal/handler"
-	"github.com/jorge-sanchez/go-service-template/services/example/internal/repository"
-	"github.com/jorge-sanchez/go-service-template/services/example/internal/service"
+	apperrors "github.com/jorge-sanchez/cloud-commerce/pkg/errors"
+	"github.com/jorge-sanchez/cloud-commerce/pkg/logger"
+	"github.com/jorge-sanchez/cloud-commerce/services/example/internal/handler"
+	"github.com/jorge-sanchez/cloud-commerce/services/example/internal/repository"
+	"github.com/jorge-sanchez/cloud-commerce/services/example/internal/service"
 )
 
 func envOr(key, fallback string) string {

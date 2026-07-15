@@ -1,13 +1,13 @@
-module github.com/jorge-sanchez/go-service-template/services/example
+module github.com/jorge-sanchez/cloud-commerce/services/example
 
 go 1.25.0
 
 require (
 	github.com/gin-gonic/gin v1.12.0
-	github.com/jorge-sanchez/go-service-template/pkg/errors v0.0.0
-	github.com/jorge-sanchez/go-service-template/pkg/logger v0.0.0
-	github.com/jorge-sanchez/go-service-template/pkg/pagination v0.0.0
-	github.com/jorge-sanchez/go-service-template/pkg/testdb v0.0.0
+	github.com/jorge-sanchez/cloud-commerce/pkg/errors v0.0.0
+	github.com/jorge-sanchez/cloud-commerce/pkg/logger v0.0.0
+	github.com/jorge-sanchez/cloud-commerce/pkg/pagination v0.0.0
+	github.com/jorge-sanchez/cloud-commerce/pkg/testdb v0.0.0
 	github.com/lib/pq v1.12.3
 	github.com/stretchr/testify v1.11.1
 	go.uber.org/zap v1.28.0
@@ -101,8 +101,8 @@ require (
 )
 
 replace (
-	github.com/jorge-sanchez/go-service-template/pkg/errors => ../../pkg/errors
-	github.com/jorge-sanchez/go-service-template/pkg/logger => ../../pkg/logger
-	github.com/jorge-sanchez/go-service-template/pkg/pagination => ../../pkg/pagination
-	github.com/jorge-sanchez/go-service-template/pkg/testdb => ../../pkg/testdb
+	github.com/jorge-sanchez/cloud-commerce/pkg/errors => ../../pkg/errors
+	github.com/jorge-sanchez/cloud-commerce/pkg/logger => ../../pkg/logger
+	github.com/jorge-sanchez/cloud-commerce/pkg/pagination => ../../pkg/pagination
+	github.com/jorge-sanchez/cloud-commerce/pkg/testdb => ../../pkg/testdb
 )

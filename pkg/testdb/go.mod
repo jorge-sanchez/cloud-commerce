@@ -1,4 +1,4 @@
-module github.com/jorge-sanchez/go-service-template/pkg/testdb
+module github.com/jorge-sanchez/cloud-commerce/pkg/testdb
 
 go 1.25.0
 

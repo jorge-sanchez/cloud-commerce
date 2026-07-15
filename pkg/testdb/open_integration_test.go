@@ -15,7 +15,7 @@ import (
 
 	_ "github.com/jackc/pgx/v5/stdlib"
 
-	"github.com/jorge-sanchez/go-service-template/pkg/testdb"
+	"github.com/jorge-sanchez/cloud-commerce/pkg/testdb"
 )
 
 func TestOpen_ProvisionsEmptyUsableDatabase(t *testing.T) {

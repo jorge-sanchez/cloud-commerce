@@ -7,8 +7,8 @@ import (
 	"context"
 	"time"
 
-	apperrors "github.com/jorge-sanchez/go-service-template/pkg/errors"
-	"github.com/jorge-sanchez/go-service-template/services/example/internal/domain"
+	apperrors "github.com/jorge-sanchez/cloud-commerce/pkg/errors"
+	"github.com/jorge-sanchez/cloud-commerce/services/example/internal/domain"
 )
 
 // EventPublisher is the outbound-events port. The service depends on the
