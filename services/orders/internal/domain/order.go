@@ -262,8 +262,8 @@ type OrderPaidEvent struct {
 	Email      string      `json:"email"`
 	TotalCents int64       `json:"total_cents"`
 	Currency   string      `json:"currency"`
-	Items    []EventItem `json:"items"`
-	PaidAt   time.Time   `json:"paid_at"`
+	Items      []EventItem `json:"items"`
+	PaidAt     time.Time   `json:"paid_at"`
 }
 
 // NewOrderPaidEvent builds the event from the persisted order.
