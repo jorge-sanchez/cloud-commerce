@@ -92,6 +92,27 @@ func (h *ProductHandler) Activate(c *gin.Context) {
 // group with cors.Public() (no credentials, any origin).
 func (h *ProductHandler) RegisterStorefrontRoutes(rg *gin.RouterGroup) {
 	rg.GET("/public/stores/:tenantId/products", h.PublicList)
+	rg.GET("/public/stores/:tenantId/variants/:variantId", h.PublicVariant)
+}
+
+func (h *ProductHandler) PublicVariant(c *gin.Context) {
+	v, err := h.svc.GetPublicVariant(c.Request.Context(), c.Param("tenantId"), c.Param("variantId"))
+	if err != nil {
+		apperrors.RespondError(c, err)
+		return
+	}
+	values := v.OptionValues
+	if values == nil {
+		values = []string{}
+	}
+	c.JSON(http.StatusOK, PublicVariantResponse{
+		VariantID:    v.VariantID,
+		ProductID:    v.ProductID,
+		ProductTitle: v.ProductTitle,
+		SKU:          v.SKU,
+		OptionValues: values,
+		PriceCents:   v.PriceCents,
+	})
 }
 
 func (h *ProductHandler) PublicList(c *gin.Context) {

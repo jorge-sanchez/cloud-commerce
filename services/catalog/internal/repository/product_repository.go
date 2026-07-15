@@ -205,6 +205,28 @@ func (r *PostgresProductRepository) ListActiveByTenant(ctx context.Context, tena
 	return products, total, nil
 }
 
+func (r *PostgresProductRepository) GetActiveVariant(ctx context.Context, tenantID, variantID string) (*domain.VariantLookup, error) {
+	var v domain.VariantLookup
+	var valuesJSON []byte
+	err := r.db.QueryRowContext(ctx, `
+		SELECT v.id, v.product_id, p.title, v.sku, v.option_values, v.price_cents
+		FROM variants v
+		JOIN products p ON p.id = v.product_id AND p.tenant_id = v.tenant_id
+		WHERE v.tenant_id = $1 AND v.id = $2 AND p.status = 'active'`,
+		tenantID, variantID,
+	).Scan(&v.VariantID, &v.ProductID, &v.ProductTitle, &v.SKU, &valuesJSON, &v.PriceCents)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, apperrors.ErrNotFound
+	}
+	if err != nil {
+		return nil, apperrors.ErrInternal.Wrap(err)
+	}
+	if err := json.Unmarshal(valuesJSON, &v.OptionValues); err != nil {
+		return nil, apperrors.ErrInternal.Wrap(err)
+	}
+	return &v, nil
+}
+
 // ActivateIfActivatable loads the product inside a transaction, lets the
 // entity decide the transition, and persists what the entity decided.
 func (r *PostgresProductRepository) ActivateIfActivatable(ctx context.Context, tenantID, id string) (*domain.Product, error) {

@@ -15,3 +15,7 @@ packages:
     output_path: services/admin/web/src/types/inventory.ts
     type_mappings:
       time.Time: "string /* RFC 3339 */"
+  - path: github.com/jorge-sanchez/cloud-commerce/services/orders/internal/handler
+    output_path: services/admin/web/src/types/orders.ts
+    type_mappings:
+      time.Time: "string /* RFC 3339 */"

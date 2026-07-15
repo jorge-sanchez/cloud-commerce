@@ -43,6 +43,18 @@ export interface ListProductsResponse {
   page_size: number /* int */;
 }
 /**
+ * PublicVariantResponse is the storefront's purchasable-variant lookup —
+ * what a cart needs to snapshot a line.
+ */
+export interface PublicVariantResponse {
+  variant_id: string;
+  product_id: string;
+  product_title: string;
+  sku: string;
+  option_values: string[];
+  price_cents: number /* int64 */;
+}
+/**
  * CollectionResponse is the single-collection wire shape. ProductIDs is
  * populated on single fetches, empty in list responses.
  */

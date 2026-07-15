@@ -36,6 +36,17 @@ type ListProductsResponse struct {
 	PageSize int               `json:"page_size"`
 }
 
+// PublicVariantResponse is the storefront's purchasable-variant lookup —
+// what a cart needs to snapshot a line.
+type PublicVariantResponse struct {
+	VariantID    string   `json:"variant_id"`
+	ProductID    string   `json:"product_id"`
+	ProductTitle string   `json:"product_title"`
+	SKU          string   `json:"sku"`
+	OptionValues []string `json:"option_values"`
+	PriceCents   int64    `json:"price_cents"`
+}
+
 // CollectionResponse is the single-collection wire shape. ProductIDs is
 // populated on single fetches, empty in list responses.
 type CollectionResponse struct {

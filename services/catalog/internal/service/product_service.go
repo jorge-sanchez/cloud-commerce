@@ -24,6 +24,8 @@ type ProductService interface {
 	List(ctx context.Context, tenantID string, page, pageSize int) ([]*domain.Product, int, error)
 	// ListPublic is the storefront read: active products only, no auth.
 	ListPublic(ctx context.Context, tenantID string, page, pageSize int) ([]*domain.Product, int, error)
+	// GetPublicVariant is the storefront's purchasable-variant lookup.
+	GetPublicVariant(ctx context.Context, tenantID, variantID string) (*domain.VariantLookup, error)
 	Activate(ctx context.Context, tenantID, id string) (*domain.Product, error)
 }
 
@@ -68,6 +70,10 @@ func (s *productService) List(ctx context.Context, tenantID string, page, pageSi
 
 func (s *productService) ListPublic(ctx context.Context, tenantID string, page, pageSize int) ([]*domain.Product, int, error) {
 	return s.repo.ListActiveByTenant(ctx, tenantID, page, pageSize)
+}
+
+func (s *productService) GetPublicVariant(ctx context.Context, tenantID, variantID string) (*domain.VariantLookup, error) {
+	return s.repo.GetActiveVariant(ctx, tenantID, variantID)
 }
 
 func (s *productService) Activate(ctx context.Context, tenantID, id string) (*domain.Product, error) {
