@@ -1,7 +1,7 @@
 //go:build integration
 
-// Test Budget: 4 distinct behaviors × 2 = 8 max integration tests
-// Actual: 7
+// Test Budget: 5 distinct behaviors × 2 = 10 max integration tests
+// Actual: 8
 //
 // Behavior 1: SaveNewWithVariants — persists the aggregate atomically with
 //
@@ -19,6 +19,8 @@
 // Behavior 4: ActivateIfActivatable — entity-approved transition persists
 //
 //	with the activated event; entity-rejected transition changes nothing
+//
+// Behavior 5: ListActiveByTenant — the storefront read excludes drafts
 package repository
 
 import (
@@ -187,4 +189,27 @@ func TestPostgresProductRepository_ActivateIfActivatable_DraftThenRepeat_Activat
 
 	_, err = repo.ActivateIfActivatable(context.Background(), tenantA, saved.ID)
 	require.ErrorIs(t, err, apperrors.ErrConflict, "a second activation must be rejected by the entity")
+}
+
+// ---------------------------------------------------------------------------
+// Behavior 5: the storefront read excludes drafts
+// ---------------------------------------------------------------------------
+
+func TestPostgresProductRepository_ListActiveByTenant_MixedStatuses_ReturnsOnlyActive(t *testing.T) {
+	repo := NewPostgresProductRepository(openMigratedDB(t))
+	ctx := context.Background()
+
+	activated, err := repo.SaveNewWithVariants(ctx, tenantA, shirtFixture(t, "TS-LIVE"))
+	require.NoError(t, err)
+	_, err = repo.ActivateIfActivatable(ctx, tenantA, activated.ID)
+	require.NoError(t, err)
+	_, err = repo.SaveNewWithVariants(ctx, tenantA, shirtFixture(t, "TS-DRAFT"))
+	require.NoError(t, err)
+
+	products, total, err := repo.ListActiveByTenant(ctx, tenantA, 1, 20)
+
+	require.NoError(t, err)
+	assert.Equal(t, 1, total)
+	require.Len(t, products, 1, "drafts must not appear on the storefront")
+	assert.Equal(t, "TS-LIVE", products[0].Variants[0].SKU)
 }

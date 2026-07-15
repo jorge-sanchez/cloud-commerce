@@ -67,6 +67,10 @@ func (f *fakeMerchantRepo) GetByID(_ context.Context, _ string) (*domain.Merchan
 	return f.merchant, f.getErr
 }
 
+func (f *fakeMerchantRepo) GetByHandle(_ context.Context, _ string) (*domain.Merchant, error) {
+	return f.merchant, f.getErr
+}
+
 func (f *fakeMerchantRepo) UpdateStoreProfile(_ context.Context, _, _ string, _ domain.StoreSettings) (*domain.Merchant, error) {
 	return f.merchant, f.getErr
 }

@@ -44,10 +44,21 @@ type ListStaffResponse struct {
 	PageSize int            `json:"page_size"`
 }
 
+// PublicStoreResponse is the unauthenticated storefront lookup shape —
+// only what a buyer client needs to browse and display prices.
+type PublicStoreResponse struct {
+	ID       string `json:"id"`
+	Name     string `json:"name"`
+	Handle   string `json:"handle"`
+	Currency string `json:"currency"`
+	Timezone string `json:"timezone"`
+}
+
 // StoreResponse is the store profile wire shape.
 type StoreResponse struct {
 	ID           string    `json:"id"`
 	Name         string    `json:"name"`
+	Handle       string    `json:"handle"`
 	Status       string    `json:"status"`
 	Currency     string    `json:"currency"`
 	Timezone     string    `json:"timezone"`

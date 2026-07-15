@@ -22,6 +22,8 @@ type ProductService interface {
 	Create(ctx context.Context, tenantID, title, description string, options []string, variants []VariantInput) (*domain.Product, error)
 	Get(ctx context.Context, tenantID, id string) (*domain.Product, error)
 	List(ctx context.Context, tenantID string, page, pageSize int) ([]*domain.Product, int, error)
+	// ListPublic is the storefront read: active products only, no auth.
+	ListPublic(ctx context.Context, tenantID string, page, pageSize int) ([]*domain.Product, int, error)
 	Activate(ctx context.Context, tenantID, id string) (*domain.Product, error)
 }
 
@@ -62,6 +64,10 @@ func (s *productService) Get(ctx context.Context, tenantID, id string) (*domain.
 
 func (s *productService) List(ctx context.Context, tenantID string, page, pageSize int) ([]*domain.Product, int, error) {
 	return s.repo.ListByTenant(ctx, tenantID, page, pageSize)
+}
+
+func (s *productService) ListPublic(ctx context.Context, tenantID string, page, pageSize int) ([]*domain.Product, int, error) {
+	return s.repo.ListActiveByTenant(ctx, tenantID, page, pageSize)
 }
 
 func (s *productService) Activate(ctx context.Context, tenantID, id string) (*domain.Product, error) {

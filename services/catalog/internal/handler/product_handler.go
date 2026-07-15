@@ -88,6 +88,33 @@ func (h *ProductHandler) Activate(c *gin.Context) {
 	c.JSON(http.StatusOK, toProductResponse(product))
 }
 
+// RegisterStorefrontRoutes mounts the buyer-facing public routes; wrap the
+// group with cors.Public() (no credentials, any origin).
+func (h *ProductHandler) RegisterStorefrontRoutes(rg *gin.RouterGroup) {
+	rg.GET("/public/stores/:tenantId/products", h.PublicList)
+}
+
+func (h *ProductHandler) PublicList(c *gin.Context) {
+	params := pagination.ParseParams(c)
+
+	products, total, err := h.svc.ListPublic(c.Request.Context(), c.Param("tenantId"), params.Page, params.PageSize)
+	if err != nil {
+		apperrors.RespondError(c, err)
+		return
+	}
+
+	items := make([]ProductResponse, 0, len(products))
+	for _, p := range products {
+		items = append(items, toProductResponse(p))
+	}
+	c.JSON(http.StatusOK, ListProductsResponse{
+		Items:    items,
+		Total:    total,
+		Page:     params.Page,
+		PageSize: params.PageSize,
+	})
+}
+
 func (h *ProductHandler) List(c *gin.Context) {
 	params := pagination.ParseParams(c)
 

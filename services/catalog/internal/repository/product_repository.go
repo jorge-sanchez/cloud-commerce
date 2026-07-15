@@ -168,6 +168,43 @@ func (r *PostgresProductRepository) ListByTenant(ctx context.Context, tenantID s
 	return products, total, nil
 }
 
+func (r *PostgresProductRepository) ListActiveByTenant(ctx context.Context, tenantID string, page, pageSize int) ([]*domain.Product, int, error) {
+	var total int
+	if err := r.db.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM products WHERE tenant_id = $1 AND status = 'active'`, tenantID,
+	).Scan(&total); err != nil {
+		return nil, 0, apperrors.ErrInternal.Wrap(err)
+	}
+
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT `+productColumns+` FROM products
+		WHERE tenant_id = $1 AND status = 'active'
+		ORDER BY created_at DESC
+		LIMIT $2 OFFSET $3`,
+		tenantID, pageSize, (page-1)*pageSize,
+	)
+	if err != nil {
+		return nil, 0, apperrors.ErrInternal.Wrap(err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	products := make([]*domain.Product, 0, pageSize)
+	for rows.Next() {
+		p, err := scanProductRows(rows)
+		if err != nil {
+			return nil, 0, err
+		}
+		products = append(products, p)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, 0, apperrors.ErrInternal.Wrap(err)
+	}
+	if err := r.loadVariants(ctx, tenantID, products); err != nil {
+		return nil, 0, err
+	}
+	return products, total, nil
+}
+
 // ActivateIfActivatable loads the product inside a transaction, lets the
 // entity decide the transition, and persists what the entity decided.
 func (r *PostgresProductRepository) ActivateIfActivatable(ctx context.Context, tenantID, id string) (*domain.Product, error) {

@@ -53,11 +53,23 @@ export interface ListStaffResponse {
   page_size: number /* int */;
 }
 /**
+ * PublicStoreResponse is the unauthenticated storefront lookup shape —
+ * only what a buyer client needs to browse and display prices.
+ */
+export interface PublicStoreResponse {
+  id: string;
+  name: string;
+  handle: string;
+  currency: string;
+  timezone: string;
+}
+/**
  * StoreResponse is the store profile wire shape.
  */
 export interface StoreResponse {
   id: string;
   name: string;
+  handle: string;
   status: string;
   currency: string;
   timezone: string;
