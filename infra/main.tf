@@ -104,6 +104,13 @@ resource "google_project_iam_member" "deployer_registry" {
   member  = "serviceAccount:${google_service_account.github_deployer.email}"
 }
 
+# The deploy workflow reads <service>-database-url to run migrations.
+resource "google_project_iam_member" "deployer_secrets" {
+  project = var.project_id
+  role    = "roles/secretmanager.secretAccessor"
+  member  = "serviceAccount:${google_service_account.github_deployer.email}"
+}
+
 # Deploying a service that runs as run_services requires actAs on it.
 resource "google_service_account_iam_member" "deployer_act_as_runtime" {
   service_account_id = google_service_account.run_services.name
