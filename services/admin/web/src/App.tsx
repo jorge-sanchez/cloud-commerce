@@ -5,6 +5,7 @@ import Store from "./pages/Store";
 import Staff from "./pages/Staff";
 import Products from "./pages/Products";
 import Stock from "./pages/Stock";
+import Orders from "./pages/Orders";
 
 function Layout() {
   const navigate = useNavigate();
@@ -18,6 +19,7 @@ function Layout() {
         <NavLink to="/staff">Staff</NavLink>
         <NavLink to="/products">Products</NavLink>
         <NavLink to="/stock">Stock</NavLink>
+        <NavLink to="/orders">Orders</NavLink>
         <button
           className="linklike"
           onClick={() => {
@@ -45,6 +47,7 @@ export default function App() {
         <Route path="/staff" element={<Staff />} />
         <Route path="/products" element={<Products />} />
         <Route path="/stock" element={<Stock />} />
+        <Route path="/orders" element={<Orders />} />
       </Route>
     </Routes>
   );

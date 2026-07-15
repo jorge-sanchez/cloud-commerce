@@ -28,14 +28,16 @@ type CartResponse struct {
 // OrderResponse is the order wire shape (buyer checkout result and
 // merchant order views).
 type OrderResponse struct {
-	ID         string         `json:"id"`
-	Number     int64          `json:"number"`
-	Email      string         `json:"email"`
-	Currency   string         `json:"currency"`
-	Items      []ItemResponse `json:"items"`
-	TotalCents int64          `json:"total_cents"`
-	Status     string         `json:"status"`
-	CreatedAt  time.Time      `json:"created_at"`
+	ID             string         `json:"id"`
+	Number         int64          `json:"number"`
+	Email          string         `json:"email"`
+	Currency       string         `json:"currency"`
+	Items          []ItemResponse `json:"items"`
+	TotalCents     int64          `json:"total_cents"`
+	Status         string         `json:"status"`
+	TrackingNumber string         `json:"tracking_number"`
+	Carrier        string         `json:"carrier"`
+	CreatedAt      time.Time      `json:"created_at"`
 }
 
 // PaymentIntentResponse is the provider handoff for the buyer client.

@@ -43,6 +43,7 @@ type OrderService interface {
 	RemoveItem(ctx context.Context, cartID, variantID string) (*domain.Cart, error)
 	Checkout(ctx context.Context, cartID, email string) (*domain.Order, error)
 	ListOrders(ctx context.Context, tenantID string, page, pageSize int) ([]*domain.Order, int, error)
+	FulfillOrder(ctx context.Context, tenantID, orderID, trackingNumber, carrier string) (*domain.Order, error)
 	GetOrder(ctx context.Context, tenantID, orderID string) (*domain.Order, error)
 }
 
@@ -114,6 +115,12 @@ func (s *orderService) Checkout(ctx context.Context, cartID, email string) (*dom
 
 func (s *orderService) ListOrders(ctx context.Context, tenantID string, page, pageSize int) ([]*domain.Order, int, error) {
 	return s.repo.ListByTenant(ctx, tenantID, page, pageSize)
+}
+
+func (s *orderService) FulfillOrder(ctx context.Context, tenantID, orderID, trackingNumber, carrier string) (*domain.Order, error) {
+	// The entity decides inside the repository transaction; order_fulfilled
+	// is recorded there too (ADR-002).
+	return s.repo.FulfillIfFulfillable(ctx, tenantID, orderID, trackingNumber, carrier)
 }
 
 func (s *orderService) GetOrder(ctx context.Context, tenantID, orderID string) (*domain.Order, error) {

@@ -7,6 +7,8 @@ const CATALOG =
   import.meta.env.VITE_CATALOG_URL ?? "https://catalog-bjm36sbwlq-uc.a.run.app";
 const INVENTORY =
   import.meta.env.VITE_INVENTORY_URL ?? "https://inventory-bjm36sbwlq-uc.a.run.app";
+const ORDERS =
+  import.meta.env.VITE_ORDERS_URL ?? "https://orders-bjm36sbwlq-uc.a.run.app";
 
 const TOKEN_KEY = "cc_admin_token";
 
@@ -71,4 +73,10 @@ export const inventory = {
   get: <T>(path: string) => request<T>(INVENTORY, path),
   post: <T>(path: string, body: unknown) =>
     request<T>(INVENTORY, path, { method: "POST", body: JSON.stringify(body) }),
+};
+
+export const orders = {
+  get: <T>(path: string) => request<T>(ORDERS, path),
+  post: <T>(path: string, body: unknown) =>
+    request<T>(ORDERS, path, { method: "POST", body: JSON.stringify(body) }),
 };

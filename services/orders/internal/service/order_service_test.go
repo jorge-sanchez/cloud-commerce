@@ -70,6 +70,10 @@ func (f *fakeOrderRepo) GetPublicByID(_ context.Context, _ string) (*domain.Orde
 	return f.order, f.err
 }
 
+func (f *fakeOrderRepo) FulfillIfFulfillable(_ context.Context, _, _, _, _ string) (*domain.Order, error) {
+	return f.order, f.err
+}
+
 func (f *fakeOrderRepo) ListByTenant(_ context.Context, _ string, _, _ int) ([]*domain.Order, int, error) {
 	return nil, 0, f.err
 }
