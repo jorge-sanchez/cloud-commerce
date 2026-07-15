@@ -5,17 +5,10 @@ package service
 
 import (
 	"context"
-	"time"
 
 	apperrors "github.com/jorge-sanchez/cloud-commerce/pkg/errors"
 	"github.com/jorge-sanchez/cloud-commerce/services/example/internal/domain"
 )
-
-// EventPublisher is the outbound-events port. The service depends on the
-// interface, not the concrete implementation.
-type EventPublisher interface {
-	PublishWidgetPublished(ctx context.Context, event domain.WidgetPublishedEvent) error
-}
 
 // WidgetService is the application-service port consumed by the handlers.
 type WidgetService interface {
@@ -26,18 +19,11 @@ type WidgetService interface {
 }
 
 type widgetService struct {
-	repo   domain.WidgetRepository // required
-	events EventPublisher          // may be nil
+	repo domain.WidgetRepository // required
 }
 
 // Option configures optional dependencies on the widget service.
 type Option func(*widgetService)
-
-// WithEventPublisher wires an outbound event publisher. Without it, publish
-// events are silently skipped.
-func WithEventPublisher(ep EventPublisher) Option {
-	return func(s *widgetService) { s.events = ep }
-}
 
 // NewWidgetService constructs the widget application service.
 func NewWidgetService(repo domain.WidgetRepository, opts ...Option) WidgetService {
@@ -60,25 +46,10 @@ func (s *widgetService) Get(ctx context.Context, tenantID, id string) (*domain.W
 }
 
 func (s *widgetService) Publish(ctx context.Context, tenantID, id string) (*domain.Widget, error) {
-	published, err := s.repo.PublishIfPublishable(ctx, tenantID, id)
-	if err != nil {
-		return nil, err
-	}
-
-	if s.events != nil {
-		// Build the event from the persisted domain object, not the request.
-		event := domain.WidgetPublishedEvent{
-			WidgetID:    published.ID,
-			TenantID:    published.TenantID,
-			Name:        published.Name,
-			PublishedAt: time.Now().UTC(),
-		}
-		// Publish failures are not surfaced once the row is persisted — the
-		// state change is durable; a recovery process owns retries.
-		_ = s.events.PublishWidgetPublished(ctx, event)
-	}
-
-	return published, nil
+	// The WidgetPublished event is recorded by the repository in the same
+	// transaction as the status change (transactional outbox, ADR-002); the
+	// relay owns delivery. The service has nothing to publish here.
+	return s.repo.PublishIfPublishable(ctx, tenantID, id)
 }
 
 func (s *widgetService) List(ctx context.Context, tenantID string, page, pageSize int) ([]*domain.Widget, int, error) {

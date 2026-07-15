@@ -4,6 +4,7 @@
 package main
 
 import (
+	"context"
 	"database/sql"
 	"net/http"
 	"os"
@@ -14,8 +15,10 @@ import (
 	"go.uber.org/zap"
 
 	apperrors "github.com/jorge-sanchez/cloud-commerce/pkg/errors"
+	"github.com/jorge-sanchez/cloud-commerce/pkg/events"
 	"github.com/jorge-sanchez/cloud-commerce/pkg/logger"
 	"github.com/jorge-sanchez/cloud-commerce/services/example/internal/handler"
+	"github.com/jorge-sanchez/cloud-commerce/services/example/internal/producer"
 	"github.com/jorge-sanchez/cloud-commerce/services/example/internal/repository"
 	"github.com/jorge-sanchez/cloud-commerce/services/example/internal/service"
 )
@@ -45,9 +48,25 @@ func main() {
 		log.Fatal("ping database", zap.Error(err))
 	}
 
-	repo := repository.NewPostgresWidgetRepository(db)
+	// Events are recorded to the outbox inside repository transactions
+	// (ADR-002); the relay drains them. The initial transport just logs —
+	// swap the deliverer for a broker client when one exists.
+	repo := repository.NewPostgresWidgetRepository(db,
+		repository.WithEventRecorder(producer.NewOutboxRecorder()))
 	svc := service.NewWidgetService(repo)
 	h := handler.NewWidgetHandler(svc)
+
+	relay := producer.NewRelay(db, producer.DelivererFunc(
+		func(_ context.Context, env events.Envelope) error {
+			log.Info("event delivered",
+				zap.String("event_id", env.ID),
+				zap.String("type", env.Type),
+				zap.String("tenant_id", env.TenantID))
+			return nil
+		}), producer.WithLogger(log))
+	relayCtx, stopRelay := context.WithCancel(context.Background())
+	defer stopRelay()
+	go relay.Run(relayCtx)
 
 	if env != "local" {
 		gin.SetMode(gin.ReleaseMode)

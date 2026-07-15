@@ -1,14 +1,16 @@
 //go:build integration
 
 // Test Budget: 3 distinct behaviors × 2 = 6 max integration tests
-// Actual: 4
+// Actual: 5
 //
 // Behavior 1: SaveNew + GetByID — round-trips a widget through Postgres
 // Behavior 2: PublishIfPublishable — entity-approved transition is persisted;
 //
 //	entity-rejected transition returns ErrConflict and writes nothing
 //
-// Behavior 3: ListByTenant — rows are scoped to the requesting tenant
+// Behavior 3: tenant scoping (ADR-001) — cross-tenant reads return
+//
+//	ErrNotFound; lists exclude other tenants' rows
 package repository
 
 import (
@@ -106,8 +108,20 @@ func TestPostgresWidgetRepository_PublishIfPublishable_DraftThenRepeat_PersistsO
 }
 
 // ---------------------------------------------------------------------------
-// Behavior 3: ListByTenant is tenant-scoped
+// Behavior 3: tenant scoping — the cross-tenant negative case (ADR-001)
 // ---------------------------------------------------------------------------
+
+func TestPostgresWidgetRepository_GetByID_OtherTenantsWidget_ReturnsNotFound(t *testing.T) {
+	repo := NewPostgresWidgetRepository(openMigratedDB(t))
+	ctx := context.Background()
+
+	saved, err := repo.SaveNew(ctx, tenantA, domain.NewWidget(tenantA, "hero banner"))
+	require.NoError(t, err)
+
+	_, err = repo.GetByID(ctx, tenantB, saved.ID)
+
+	require.ErrorIs(t, err, apperrors.ErrNotFound, "another tenant's widget must be indistinguishable from a missing one")
+}
 
 func TestPostgresWidgetRepository_ListByTenant_OtherTenantRows_AreExcluded(t *testing.T) {
 	repo := NewPostgresWidgetRepository(openMigratedDB(t))

@@ -6,21 +6,43 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"time"
 
 	apperrors "github.com/jorge-sanchez/cloud-commerce/pkg/errors"
+	"github.com/jorge-sanchez/cloud-commerce/pkg/events"
 	"github.com/jorge-sanchez/cloud-commerce/services/example/internal/domain"
 )
 
+// EventRecorder writes an event envelope inside the caller's transaction —
+// the transactional-outbox port (ADR-002). Implemented by producer.OutboxRecorder.
+type EventRecorder interface {
+	Record(ctx context.Context, tx *sql.Tx, env events.Envelope) error
+}
+
 // PostgresWidgetRepository implements domain.WidgetRepository on PostgreSQL.
 type PostgresWidgetRepository struct {
-	db *sql.DB
+	db     *sql.DB       // required
+	events EventRecorder // may be nil
 }
 
 var _ domain.WidgetRepository = (*PostgresWidgetRepository)(nil)
 
+// Option configures optional dependencies on the repository.
+type Option func(*PostgresWidgetRepository)
+
+// WithEventRecorder wires the outbox recorder. Without it, state changes
+// persist but no events are recorded.
+func WithEventRecorder(rec EventRecorder) Option {
+	return func(r *PostgresWidgetRepository) { r.events = rec }
+}
+
 // NewPostgresWidgetRepository wires the repository to an open *sql.DB.
-func NewPostgresWidgetRepository(db *sql.DB) *PostgresWidgetRepository {
-	return &PostgresWidgetRepository{db: db}
+func NewPostgresWidgetRepository(db *sql.DB, opts ...Option) *PostgresWidgetRepository {
+	r := &PostgresWidgetRepository{db: db}
+	for _, opt := range opts {
+		opt(r)
+	}
+	return r
 }
 
 // widgetRow mirrors the widgets table.
@@ -99,6 +121,19 @@ func (r *PostgresWidgetRepository) PublishIfPublishable(ctx context.Context, ten
 		string(widget.Status), tenantID, id,
 	); err != nil {
 		return nil, apperrors.ErrInternal.Wrap(err)
+	}
+
+	// Record the event in the same transaction as the state change (ADR-002):
+	// either both commit or neither does. Delivery is the relay's job.
+	if r.events != nil {
+		event := domain.NewWidgetPublishedEvent(widget, time.Now().UTC())
+		env, err := events.New(widget.TenantID, widget.ID, domain.WidgetPublishedEventType, event.PublishedAt, event)
+		if err != nil {
+			return nil, apperrors.ErrInternal.Wrap(err)
+		}
+		if err := r.events.Record(ctx, tx, env); err != nil {
+			return nil, err
+		}
 	}
 
 	if err := tx.Commit(); err != nil {

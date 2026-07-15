@@ -1,15 +1,16 @@
-// Test Budget: 4 distinct behaviors × 2 = 8 max unit tests
-// Actual: 6
+// Test Budget: 3 distinct behaviors × 2 = 6 max unit tests
+// Actual: 5
 //
 // Behavior 1: Create — persists a draft widget; empty name is a validation error
 // Behavior 2: Get — delegates to repo and passes errors through
-// Behavior 3: Publish — returns the persisted widget and emits the event
-// Behavior 4: Publish — event-publish failure is not surfaced to the caller
+// Behavior 3: Publish — delegates to repo and passes errors through (the
+//
+//	WidgetPublished event is recorded by the repository inside the publish
+//	transaction — see the repository integration tests, ADR-002)
 package service
 
 import (
 	"context"
-	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -51,18 +52,6 @@ func (f *fakeWidgetRepo) PublishIfPublishable(_ context.Context, _, _ string) (*
 
 func (f *fakeWidgetRepo) ListByTenant(_ context.Context, _ string, _, _ int) ([]*domain.Widget, int, error) {
 	return nil, 0, nil
-}
-
-var _ EventPublisher = (*fakePublisher)(nil)
-
-type fakePublisher struct {
-	err    error
-	events []domain.WidgetPublishedEvent
-}
-
-func (f *fakePublisher) PublishWidgetPublished(_ context.Context, e domain.WidgetPublishedEvent) error {
-	f.events = append(f.events, e)
-	return f.err
 }
 
 // ---------------------------------------------------------------------------
@@ -107,46 +96,26 @@ func TestWidgetService_Get_RepoReturnsNotFound_PassesErrorThrough(t *testing.T) 
 }
 
 // ---------------------------------------------------------------------------
-// Behavior 3: Publish emits event built from the persisted widget
+// Behavior 3: Publish delegates to the repository
 // ---------------------------------------------------------------------------
 
-func TestWidgetService_Publish_Succeeds_EmitsEventFromPersistedWidget(t *testing.T) {
+func TestWidgetService_Publish_Succeeds_ReturnsPersistedWidget(t *testing.T) {
 	persisted := &domain.Widget{ID: "widget-001", TenantID: "tenant-001", Name: "hero banner", Status: domain.WidgetStatusPublished}
 	repo := &fakeWidgetRepo{pubResult: persisted}
-	pub := &fakePublisher{}
-	svc := NewWidgetService(repo, WithEventPublisher(pub))
+	svc := NewWidgetService(repo)
 
 	w, err := svc.Publish(context.Background(), "tenant-001", "widget-001")
 
 	require.NoError(t, err)
 	assert.Equal(t, domain.WidgetStatusPublished, w.Status)
-	require.Len(t, pub.events, 1, "exactly one event must be emitted")
-	assert.Equal(t, "widget-001", pub.events[0].WidgetID)
+	assert.Equal(t, "widget-001", w.ID)
 }
 
-func TestWidgetService_Publish_RepoRejectsTransition_ReturnsErrorAndNoEvent(t *testing.T) {
+func TestWidgetService_Publish_RepoRejectsTransition_PassesErrorThrough(t *testing.T) {
 	repo := &fakeWidgetRepo{pubErr: apperrors.ErrConflict}
-	pub := &fakePublisher{}
-	svc := NewWidgetService(repo, WithEventPublisher(pub))
+	svc := NewWidgetService(repo)
 
 	_, err := svc.Publish(context.Background(), "tenant-001", "widget-001")
 
 	require.ErrorIs(t, err, apperrors.ErrConflict)
-	require.Len(t, pub.events, 0, "no event may be emitted when the transition is rejected")
-}
-
-// ---------------------------------------------------------------------------
-// Behavior 4: event-publish failure is swallowed once the row is persisted
-// ---------------------------------------------------------------------------
-
-func TestWidgetService_Publish_EventPublishFails_StillReturnsWidget(t *testing.T) {
-	persisted := &domain.Widget{ID: "widget-001", TenantID: "tenant-001", Status: domain.WidgetStatusPublished}
-	repo := &fakeWidgetRepo{pubResult: persisted}
-	pub := &fakePublisher{err: errors.New("broker down")}
-	svc := NewWidgetService(repo, WithEventPublisher(pub))
-
-	w, err := svc.Publish(context.Background(), "tenant-001", "widget-001")
-
-	require.NoError(t, err, "publish failure must not be surfaced once the row is persisted")
-	assert.Equal(t, "widget-001", w.ID)
 }

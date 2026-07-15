@@ -74,6 +74,9 @@ func (w *Widget) Archive() error {
 	return nil
 }
 
+// WidgetPublishedEventType is the envelope type for WidgetPublishedEvent.
+const WidgetPublishedEventType = "widget.published"
+
 // WidgetPublishedEvent is emitted after a widget is published. Build event
 // payloads from the persisted domain object, not from the raw request.
 type WidgetPublishedEvent struct {
@@ -81,6 +84,16 @@ type WidgetPublishedEvent struct {
 	TenantID    string    `json:"tenant_id"`
 	Name        string    `json:"name"`
 	PublishedAt time.Time `json:"published_at"`
+}
+
+// NewWidgetPublishedEvent builds the event from the persisted widget.
+func NewWidgetPublishedEvent(w *Widget, at time.Time) WidgetPublishedEvent {
+	return WidgetPublishedEvent{
+		WidgetID:    w.ID,
+		TenantID:    w.TenantID,
+		Name:        w.Name,
+		PublishedAt: at,
+	}
 }
 
 // WidgetRepository is the persistence port for the Widget aggregate.
