@@ -38,8 +38,9 @@ service, CI with lint/test/ratchet checks.
 
 *Remaining before feature work starts:*
 
-- **Identity & access** — merchant accounts, sessions or JWT, and tenant
-  resolution middleware that every service reuses.
+- **Identity & access** — done (ADR-006): the merchants service issues
+  Ed25519 JWTs at sign-up/login; `pkg/auth` middleware resolves the tenant
+  from verified claims in every service. The `X-Tenant-ID` header is gone.
 - **Multi-tenancy model (ADR)** — shared Postgres with `tenant_id` vs
   schema-per-tenant. Recommendation: shared tables with `tenant_id`, which is
   what the example service already assumes; revisit only at real scale.
