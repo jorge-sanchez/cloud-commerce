@@ -15,15 +15,16 @@ import (
 	"github.com/jorge-sanchez/cloud-commerce/services/orders/internal/service"
 )
 
-// OrderHandler exposes both surfaces: the buyer cart/checkout routes
-// (public, capability-based) and the merchant order views (authed).
+// OrderHandler exposes both surfaces: the buyer cart/checkout/payment
+// routes (public, capability-based) and the merchant order views (authed).
 type OrderHandler struct {
-	svc service.OrderService
+	svc      service.OrderService
+	payments service.PaymentService
 }
 
 // NewOrderHandler constructs the handler.
-func NewOrderHandler(svc service.OrderService) *OrderHandler {
-	return &OrderHandler{svc: svc}
+func NewOrderHandler(svc service.OrderService, payments service.PaymentService) *OrderHandler {
+	return &OrderHandler{svc: svc, payments: payments}
 }
 
 // RegisterBuyerRoutes mounts the public cart/checkout routes; the group
@@ -34,6 +35,39 @@ func (h *OrderHandler) RegisterBuyerRoutes(rg *gin.RouterGroup) {
 	rg.POST("/public/carts/:id/items", h.AddItem)
 	rg.DELETE("/public/carts/:id/items/:variantId", h.RemoveItem)
 	rg.POST("/public/carts/:id/checkout", h.Checkout)
+	rg.POST("/public/orders/:id/pay", h.StartPayment)
+	rg.POST("/public/orders/:id/pay/confirm", h.ConfirmPayment)
+}
+
+func (h *OrderHandler) StartPayment(c *gin.Context) {
+	intent, err := h.payments.StartPayment(c.Request.Context(), c.Param("id"))
+	if err != nil {
+		apperrors.RespondError(c, err)
+		return
+	}
+	c.JSON(http.StatusCreated, PaymentIntentResponse{
+		Reference:    intent.Reference,
+		ClientSecret: intent.ClientSecret,
+	})
+}
+
+type confirmPaymentRequest struct {
+	Reference string `json:"reference" binding:"required"`
+}
+
+func (h *OrderHandler) ConfirmPayment(c *gin.Context) {
+	var req confirmPaymentRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		apperrors.RespondError(c, apperrors.ErrValidation.Wrap(err))
+		return
+	}
+
+	order, err := h.payments.ConfirmPayment(c.Request.Context(), c.Param("id"), req.Reference)
+	if err != nil {
+		apperrors.RespondError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, toOrderResponse(order))
 }
 
 // RegisterMerchantRoutes mounts the authed order views; the group must be
