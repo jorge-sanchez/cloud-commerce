@@ -34,6 +34,8 @@ func (h *MerchantHandler) RegisterPublicRoutes(rg *gin.RouterGroup) {
 // group must be wrapped with auth.Middleware (see cmd/main.go).
 func (h *MerchantHandler) RegisterAuthedRoutes(rg *gin.RouterGroup) {
 	rg.GET("/me", h.Me)
+	rg.GET("/store", h.GetStore)
+	rg.PUT("/store", h.UpdateStore)
 }
 
 type signUpRequest struct {
@@ -87,6 +89,54 @@ func (h *MerchantHandler) Me(c *gin.Context) {
 		Merchant: toMerchantResponse(merchant),
 		User:     toUserResponse(user),
 	})
+}
+
+func (h *MerchantHandler) GetStore(c *gin.Context) {
+	merchant, err := h.svc.GetStore(c.Request.Context(), auth.TenantID(c))
+	if err != nil {
+		apperrors.RespondError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, toStoreResponse(merchant))
+}
+
+type updateStoreRequest struct {
+	Name         string `json:"name" binding:"required"`
+	Currency     string `json:"currency" binding:"required"`
+	Timezone     string `json:"timezone" binding:"required"`
+	SupportEmail string `json:"support_email"`
+}
+
+func (h *MerchantHandler) UpdateStore(c *gin.Context) {
+	var req updateStoreRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		apperrors.RespondError(c, apperrors.ErrValidation.Wrap(err))
+		return
+	}
+
+	merchant, err := h.svc.UpdateStore(c.Request.Context(), auth.TenantID(c), req.Name, domain.StoreSettings{
+		Currency:     req.Currency,
+		Timezone:     req.Timezone,
+		SupportEmail: req.SupportEmail,
+	})
+	if err != nil {
+		apperrors.RespondError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, toStoreResponse(merchant))
+}
+
+func toStoreResponse(m *domain.Merchant) StoreResponse {
+	return StoreResponse{
+		ID:           m.ID,
+		Name:         m.Name,
+		Status:       string(m.Status),
+		Currency:     m.Settings.Currency,
+		Timezone:     m.Settings.Timezone,
+		SupportEmail: m.Settings.SupportEmail,
+		CreatedAt:    m.CreatedAt,
+		UpdatedAt:    m.UpdatedAt,
+	}
 }
 
 func toSessionResponse(s *service.Session) SessionResponse {

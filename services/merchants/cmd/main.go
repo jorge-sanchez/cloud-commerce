@@ -8,6 +8,7 @@ import (
 	"database/sql"
 	"net/http"
 	"os"
+	_ "time/tzdata" // embed tzdata: settings validate IANA timezones in a distroless image
 
 	"github.com/gin-gonic/gin"
 	_ "github.com/lib/pq"

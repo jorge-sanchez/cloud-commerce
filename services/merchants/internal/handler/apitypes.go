@@ -33,3 +33,15 @@ type MeResponse struct {
 	Merchant MerchantResponse `json:"merchant"`
 	User     UserResponse     `json:"user"`
 }
+
+// StoreResponse is the store profile wire shape.
+type StoreResponse struct {
+	ID           string    `json:"id"`
+	Name         string    `json:"name"`
+	Status       string    `json:"status"`
+	Currency     string    `json:"currency"`
+	Timezone     string    `json:"timezone"`
+	SupportEmail string    `json:"support_email"`
+	CreatedAt    time.Time `json:"created_at"`
+	UpdatedAt    time.Time `json:"updated_at"`
+}

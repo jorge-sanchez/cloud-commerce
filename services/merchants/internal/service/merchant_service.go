@@ -32,6 +32,8 @@ type MerchantService interface {
 	SignUp(ctx context.Context, storeName, email, password string) (*Session, error)
 	LogIn(ctx context.Context, email, password string) (*Session, error)
 	Me(ctx context.Context, tenantID, userID string) (*domain.Merchant, *domain.User, error)
+	GetStore(ctx context.Context, tenantID string) (*domain.Merchant, error)
+	UpdateStore(ctx context.Context, tenantID, name string, settings domain.StoreSettings) (*domain.Merchant, error)
 }
 
 type merchantService struct {
@@ -104,6 +106,16 @@ func (s *merchantService) LogIn(ctx context.Context, email, password string) (*S
 
 func (s *merchantService) Me(ctx context.Context, tenantID, userID string) (*domain.Merchant, *domain.User, error) {
 	return s.repo.GetMerchantWithUser(ctx, tenantID, userID)
+}
+
+func (s *merchantService) GetStore(ctx context.Context, tenantID string) (*domain.Merchant, error) {
+	return s.repo.GetByID(ctx, tenantID)
+}
+
+func (s *merchantService) UpdateStore(ctx context.Context, tenantID, name string, settings domain.StoreSettings) (*domain.Merchant, error) {
+	// The entity validates inside the repository transaction; the settings
+	// event is recorded there too (ADR-002).
+	return s.repo.UpdateStoreProfile(ctx, tenantID, name, settings)
 }
 
 func (s *merchantService) session(m *domain.Merchant, u *domain.User) (*Session, error) {

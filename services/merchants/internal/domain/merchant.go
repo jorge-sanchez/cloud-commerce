@@ -30,19 +30,58 @@ const (
 
 // Domain sentinel errors for entity-level failures.
 var (
-	ErrInvalidEmail   = errors.New("email address is not valid")
-	ErrWeakPassword   = errors.New("password must be at least 8 characters")
-	ErrEmptyName      = errors.New("store name must not be empty")
-	ErrNotSuspendable = errors.New("merchant cannot be suspended in its current status")
+	ErrInvalidEmail    = errors.New("email address is not valid")
+	ErrWeakPassword    = errors.New("password must be at least 8 characters")
+	ErrEmptyName       = errors.New("store name must not be empty")
+	ErrNotSuspendable  = errors.New("merchant cannot be suspended in its current status")
+	ErrInvalidCurrency = errors.New("currency must be a three-letter ISO 4217 code")
+	ErrInvalidTimezone = errors.New("timezone must be a valid IANA zone name")
 )
+
+// StoreSettings is the merchant-configurable store profile.
+type StoreSettings struct {
+	Currency     string // ISO 4217, e.g. "USD"
+	Timezone     string // IANA zone, e.g. "America/Lima"
+	SupportEmail string // shown to buyers; may be empty
+}
+
+// DefaultStoreSettings are applied at sign-up.
+func DefaultStoreSettings() StoreSettings {
+	return StoreSettings{Currency: "USD", Timezone: "UTC"}
+}
 
 // Merchant is the aggregate root. Its ID is the platform tenant ID.
 type Merchant struct {
 	ID        string
 	Name      string
 	Status    MerchantStatus
+	Settings  StoreSettings
 	CreatedAt time.Time
 	UpdatedAt time.Time
+}
+
+// UpdateProfile applies a new name and settings. The entity validates —
+// callers must not write Name or Settings directly.
+func (m *Merchant) UpdateProfile(name string, s StoreSettings) error {
+	if strings.TrimSpace(name) == "" {
+		return ErrEmptyName
+	}
+	if len(s.Currency) != 3 || strings.ToUpper(s.Currency) != s.Currency {
+		return fmt.Errorf("%w: %q", ErrInvalidCurrency, s.Currency)
+	}
+	if _, err := time.LoadLocation(s.Timezone); err != nil || s.Timezone == "" {
+		return fmt.Errorf("%w: %q", ErrInvalidTimezone, s.Timezone)
+	}
+	if s.SupportEmail != "" {
+		normalized, err := NormalizeEmail(s.SupportEmail)
+		if err != nil {
+			return err
+		}
+		s.SupportEmail = normalized
+	}
+	m.Name = strings.TrimSpace(name)
+	m.Settings = s
+	return nil
 }
 
 // User is a person who can sign in to a merchant account.
@@ -55,13 +94,17 @@ type User struct {
 	CreatedAt    time.Time
 }
 
-// NewMerchant constructs an active merchant. ID and timestamps are assigned
-// by the repository on save.
+// NewMerchant constructs an active merchant with default settings. ID and
+// timestamps are assigned by the repository on save.
 func NewMerchant(name string) (*Merchant, error) {
 	if strings.TrimSpace(name) == "" {
 		return nil, ErrEmptyName
 	}
-	return &Merchant{Name: strings.TrimSpace(name), Status: MerchantStatusActive}, nil
+	return &Merchant{
+		Name:     strings.TrimSpace(name),
+		Status:   MerchantStatusActive,
+		Settings: DefaultStoreSettings(),
+	}, nil
 }
 
 // NewOwner constructs the owner user for a new merchant. The caller supplies
@@ -128,6 +171,31 @@ func NewMerchantSignedUpEvent(m *Merchant, owner *User, at time.Time) MerchantSi
 	}
 }
 
+// MerchantSettingsUpdatedEventType is the envelope type for
+// MerchantSettingsUpdatedEvent.
+const MerchantSettingsUpdatedEventType = "merchant.settings_updated"
+
+// MerchantSettingsUpdatedEvent is emitted when the store profile changes;
+// storefront and catalog caches invalidate on it.
+type MerchantSettingsUpdatedEvent struct {
+	MerchantID string    `json:"merchant_id"`
+	Name       string    `json:"name"`
+	Currency   string    `json:"currency"`
+	Timezone   string    `json:"timezone"`
+	UpdatedAt  time.Time `json:"updated_at"`
+}
+
+// NewMerchantSettingsUpdatedEvent builds the event from the persisted aggregate.
+func NewMerchantSettingsUpdatedEvent(m *Merchant, at time.Time) MerchantSettingsUpdatedEvent {
+	return MerchantSettingsUpdatedEvent{
+		MerchantID: m.ID,
+		Name:       m.Name,
+		Currency:   m.Settings.Currency,
+		Timezone:   m.Settings.Timezone,
+		UpdatedAt:  at,
+	}
+}
+
 // MerchantRepository is the persistence port for the Merchant aggregate.
 type MerchantRepository interface {
 	// SaveNewWithOwner persists the merchant and its owner user atomically
@@ -140,4 +208,11 @@ type MerchantRepository interface {
 	// GetMerchantWithUser returns the merchant and the requesting user,
 	// tenant-scoped, or apperrors.ErrNotFound.
 	GetMerchantWithUser(ctx context.Context, tenantID, userID string) (*Merchant, *User, error)
+	// GetByID returns the merchant, tenant-scoped (id IS the tenant), or
+	// apperrors.ErrNotFound.
+	GetByID(ctx context.Context, tenantID string) (*Merchant, error)
+	// UpdateStoreProfile loads the merchant, lets the entity validate the
+	// new profile, and persists what the entity decided. Returns
+	// apperrors.ErrValidation when the entity rejects it.
+	UpdateStoreProfile(ctx context.Context, tenantID, name string, settings StoreSettings) (*Merchant, error)
 }

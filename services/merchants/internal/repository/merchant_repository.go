@@ -58,10 +58,10 @@ func (r *PostgresMerchantRepository) SaveNewWithOwner(ctx context.Context, m *do
 
 	merchant := *m
 	err = tx.QueryRowContext(ctx, `
-		INSERT INTO merchants (name, status)
-		VALUES ($1, $2)
+		INSERT INTO merchants (name, status, currency, timezone, support_email)
+		VALUES ($1, $2, $3, $4, $5)
 		RETURNING id, created_at, updated_at`,
-		m.Name, string(m.Status),
+		m.Name, string(m.Status), m.Settings.Currency, m.Settings.Timezone, m.Settings.SupportEmail,
 	).Scan(&merchant.ID, &merchant.CreatedAt, &merchant.UpdatedAt)
 	if err != nil {
 		return nil, nil, apperrors.ErrInternal.Wrap(err)
@@ -119,21 +119,80 @@ func (r *PostgresMerchantRepository) GetMerchantWithUser(ctx context.Context, te
 		return nil, nil, err
 	}
 
+	merchant, err := r.GetByID(ctx, tenantID)
+	if err != nil {
+		return nil, nil, err
+	}
+	return merchant, user, nil
+}
+
+const merchantColumns = `id, name, status, currency, timezone, support_email, created_at, updated_at`
+
+func (r *PostgresMerchantRepository) GetByID(ctx context.Context, tenantID string) (*domain.Merchant, error) {
+	return r.scanMerchant(r.db.QueryRowContext(ctx,
+		`SELECT `+merchantColumns+` FROM merchants WHERE id = $1`, tenantID))
+}
+
+// UpdateStoreProfile loads the merchant inside a transaction, lets the
+// entity validate the new profile, and persists what the entity decided.
+func (r *PostgresMerchantRepository) UpdateStoreProfile(ctx context.Context, tenantID, name string, settings domain.StoreSettings) (*domain.Merchant, error) {
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, apperrors.ErrInternal.Wrap(err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	merchant, err := r.scanMerchant(tx.QueryRowContext(ctx,
+		`SELECT `+merchantColumns+` FROM merchants WHERE id = $1 FOR UPDATE`, tenantID))
+	if err != nil {
+		return nil, err
+	}
+
+	if err := merchant.UpdateProfile(name, settings); err != nil { // entity decides
+		return nil, apperrors.ErrValidation.Wrap(err)
+	}
+
+	if _, err := tx.ExecContext(ctx, `
+		UPDATE merchants
+		SET name = $1, currency = $2, timezone = $3, support_email = $4, updated_at = NOW()
+		WHERE id = $5`,
+		merchant.Name, merchant.Settings.Currency, merchant.Settings.Timezone,
+		merchant.Settings.SupportEmail, tenantID,
+	); err != nil {
+		return nil, apperrors.ErrInternal.Wrap(err)
+	}
+
+	// Record the event in the same transaction as the state change (ADR-002).
+	if r.events != nil {
+		event := domain.NewMerchantSettingsUpdatedEvent(merchant, time.Now().UTC())
+		env, err := events.New(merchant.ID, merchant.ID, domain.MerchantSettingsUpdatedEventType, event.UpdatedAt, event)
+		if err != nil {
+			return nil, apperrors.ErrInternal.Wrap(err)
+		}
+		if err := r.events.Record(ctx, tx, env); err != nil {
+			return nil, err
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return nil, apperrors.ErrInternal.Wrap(err)
+	}
+	return merchant, nil
+}
+
+func (r *PostgresMerchantRepository) scanMerchant(row *sql.Row) (*domain.Merchant, error) {
 	var m domain.Merchant
 	var status string
-	err = r.db.QueryRowContext(ctx, `
-		SELECT id, name, status, created_at, updated_at
-		FROM merchants WHERE id = $1`,
-		tenantID,
-	).Scan(&m.ID, &m.Name, &status, &m.CreatedAt, &m.UpdatedAt)
+	err := row.Scan(&m.ID, &m.Name, &status, &m.Settings.Currency, &m.Settings.Timezone,
+		&m.Settings.SupportEmail, &m.CreatedAt, &m.UpdatedAt)
 	if errors.Is(err, sql.ErrNoRows) {
-		return nil, nil, apperrors.ErrNotFound
+		return nil, apperrors.ErrNotFound
 	}
 	if err != nil {
-		return nil, nil, apperrors.ErrInternal.Wrap(err)
+		return nil, apperrors.ErrInternal.Wrap(err)
 	}
 	m.Status = domain.MerchantStatus(status)
-	return &m, user, nil
+	return &m, nil
 }
 
 func (r *PostgresMerchantRepository) scanUser(row *sql.Row) (*domain.User, error) {
