@@ -1,0 +1,108 @@
+name: Test
+
+# Docs-only PRs skip the heavy jobs via the `changes` gate job below, NOT via
+# workflow-level paths-ignore: if these job names become required status
+# checks on main, a path-filtered workflow never creates its check runs,
+# wedging docs-only PRs on "Expected" forever. Job-level skips report a
+# "skipped" conclusion, which GitHub counts as passing for required checks.
+on:
+  pull_request:
+    branches:
+      - "**"
+  push:
+    branches:
+      - main
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Docs-only when every changed file is under docs/ or is markdown.
+  changes:
+    name: Classify changed paths
+    runs-on: ubuntu-latest
+    outputs:
+      code: ${{ steps.classify.outputs.code }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # fetch-depth 2 so the PR merge commit's first parent (the base
+          # branch tip) is available for the diff.
+          fetch-depth: 2
+
+      - id: classify
+        run: |
+          CODE=true
+          if [ "${{ github.event_name }}" = "pull_request" ] && git rev-parse HEAD^2 > /dev/null 2>&1; then
+            CHANGED=$(git diff --name-only HEAD^1 HEAD)
+            echo "Changed files:"; echo "$CHANGED" | sed 's/^/  /'
+            if [ -n "$CHANGED" ] && ! echo "$CHANGED" | grep -qvE '^docs/|\.md$'; then
+              CODE=false
+            fi
+          fi
+          echo "code=${CODE}" >> "$GITHUB_OUTPUT"
+          echo "Classification: code=${CODE}"
+
+  go-test:
+    name: Go Tests
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_USER: app
+          POSTGRES_PASSWORD: app
+          POSTGRES_DB: app_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U app -d app_test"
+          --health-interval 2s
+          --health-timeout 3s
+          --health-retries 15
+
+    env:
+      # Integration tests provision per-scope databases on this shared server
+      # via pkg/testdb — ~100ms per database instead of a container start each.
+      TEST_POSTGRES_DSN: postgres://app:app@localhost:5432/app_test?sslmode=disable
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version: "1.25"
+          cache: true
+
+      - name: Download module dependencies
+        run: |
+          for dir in services/* pkg/*; do
+            if [ -f "$dir/go.mod" ]; then
+              (cd "$dir" && GOWORK=off go mod download)
+            fi
+          done
+
+      - name: Run unit tests
+        run: |
+          set -e
+          for dir in services/* pkg/*; do
+            if [ -f "$dir/go.mod" ]; then
+              echo "=== Unit tests: $dir ==="
+              (cd "$dir" && GOWORK=off go test -race -timeout 5m ./...)
+            fi
+          done
+
+      - name: Run integration tests
+        run: |
+          set -e
+          for dir in services/* pkg/*; do
+            if [ -f "$dir/go.mod" ]; then
+              echo "=== Integration tests: $dir ==="
+              (cd "$dir" && GOWORK=off go vet -tags integration ./...)
+              (cd "$dir" && GOWORK=off go test -race -tags integration -timeout 15m ./...)
+            fi
+          done

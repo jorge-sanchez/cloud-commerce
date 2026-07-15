@@ -1,0 +1,27 @@
+# Dependabot: security alerts are enabled at the repo level (Settings →
+# Security); this file adds grouped version-update PRs on top. Updates are
+# grouped per ecosystem so a quiet week produces at most two PRs, not one
+# per dependency.
+version: 2
+updates:
+  # Every Go module in the workspace (each pkg/* and services/* directory
+  # has its own go.mod).
+  - package-ecosystem: gomod
+    directories:
+      - "/pkg/*"
+      - "/services/*"
+    schedule:
+      interval: weekly
+    groups:
+      go-dependencies:
+        patterns:
+          - "*"
+
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns:
+          - "*"

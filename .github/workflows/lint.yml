@@ -1,0 +1,90 @@
+name: Lint
+
+# Docs-only PRs skip the lint jobs via the `changes` gate job below — see the
+# comment at the top of test.yml for why paths-ignore is the wrong tool here.
+on:
+  pull_request:
+    branches:
+      - "**"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Same classification as test.yml's `changes` job: docs-only when every
+  # changed file is under docs/ or is markdown.
+  changes:
+    name: Classify changed paths
+    runs-on: ubuntu-latest
+    outputs:
+      code: ${{ steps.classify.outputs.code }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 2
+
+      - id: classify
+        run: |
+          CODE=true
+          if [ "${{ github.event_name }}" = "pull_request" ] && git rev-parse HEAD^2 > /dev/null 2>&1; then
+            CHANGED=$(git diff --name-only HEAD^1 HEAD)
+            echo "Changed files:"; echo "$CHANGED" | sed 's/^/  /'
+            if [ -n "$CHANGED" ] && ! echo "$CHANGED" | grep -qvE '^docs/|\.md$'; then
+              CODE=false
+            fi
+          fi
+          echo "code=${CODE}" >> "$GITHUB_OUTPUT"
+          echo "Classification: code=${CODE}"
+
+  go-lint:
+    name: Go Lint
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version: "1.25"
+          cache: true
+
+      - name: Install golangci-lint
+        run: |
+          curl -sSfL https://golangci-lint.run/install.sh \
+            | sh -s -- -b $(go env GOPATH)/bin latest
+
+      - name: Download module dependencies
+        run: |
+          for dir in services/* pkg/*; do
+            if [ -f "$dir/go.mod" ]; then
+              (cd "$dir" && GOWORK=off go mod download)
+            fi
+          done
+
+      - name: Run golangci-lint per module
+        # golangci-lint v2: linters (errcheck, govet, staticcheck, unused, revive) +
+        # formatters (goimports) are configured in /.golangci.yml.
+        # Formatter violations (e.g. import ordering) cause a non-zero exit and
+        # block the PR just like linter violations.
+        run: |
+          set -e
+          GOLANGCI_CONFIG="$(pwd)/.golangci.yml"
+          for dir in services/* pkg/*; do
+            if [ -f "$dir/go.mod" ]; then
+              echo "=== Linting $dir ==="
+              (cd "$dir" && GOWORK=off golangci-lint run --config="$GOLANGCI_CONFIG" --timeout=5m ./...)
+            fi
+          done
+
+  api-types-drift:
+    name: API Types Drift
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Enforce the gin.H success-body ratchet
+        run: bash scripts/check_ginh_success_ratchet.sh

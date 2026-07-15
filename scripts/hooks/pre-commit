@@ -1,0 +1,66 @@
+#!/usr/bin/env bash
+# pre-commit — run Go linting before every commit.
+# Commit is blocked if the linter reports errors.
+
+set -euo pipefail
+
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+cd "$REPO_ROOT"
+
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+NC='\033[0m'
+
+FAILED=0
+
+# ---------------------------------------------------------------------------
+# Go linting (golangci-lint) — mirrors CI exactly:
+#   • explicit --config so the root .golangci.yml is always used regardless
+#     of which directory golangci-lint is invoked from
+#   • GOWORK=off so each module is linted in isolation, matching CI
+#   • golangci-lint v2 required for the formatters.goimports section
+# ---------------------------------------------------------------------------
+echo "Running Go linting..."
+
+GOLANGCI_CONFIG="$REPO_ROOT/.golangci.yml"
+
+if ! command -v golangci-lint &>/dev/null; then
+  echo -e "${YELLOW}[SKIP]${NC} golangci-lint not found — install from https://golangci-lint.run/usage/install/"
+else
+  # Warn when the installed major version is not v2 (formatters section is v2-only).
+  GOLANGCI_MAJOR=$(golangci-lint version 2>/dev/null | grep -oE 'version [0-9]+' | awk '{print $2}')
+  if [ -n "$GOLANGCI_MAJOR" ] && [ "$GOLANGCI_MAJOR" -lt 2 ]; then
+    echo -e "${YELLOW}[WARN]${NC} golangci-lint v1 detected — goimports formatter checks will be skipped locally."
+    echo "       Upgrade to v2: https://golangci-lint.run/usage/install/"
+  fi
+
+  for dir in services/* pkg/*; do
+    if [ -f "$dir/go.mod" ]; then
+      echo "=== Linting $dir ==="
+      if (cd "$dir" && GOWORK=off golangci-lint run --config="$GOLANGCI_CONFIG" --timeout=5m ./...); then
+        echo -e "${GREEN}[PASS]${NC} Go linting"
+      else
+        echo -e "${RED}[FAIL]${NC} Go linting — fix the errors above, then re-commit"
+        FAILED=1
+      fi
+    fi
+  done
+fi
+
+# ---------------------------------------------------------------------------
+# gin.H success-body ratchet
+# ---------------------------------------------------------------------------
+if ! bash scripts/check_ginh_success_ratchet.sh; then
+  FAILED=1
+fi
+
+# ---------------------------------------------------------------------------
+if [ "$FAILED" -ne 0 ]; then
+  echo ""
+  echo -e "${RED}Pre-commit checks failed. Commit aborted.${NC}"
+  echo "To skip hooks in an emergency: git commit --no-verify"
+  exit 1
+fi
+
+exit 0

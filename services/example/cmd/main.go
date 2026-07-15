@@ -1,0 +1,70 @@
+// The example service wires the layers together: repository → service →
+// handler. Configuration comes from the environment; sensible local defaults
+// keep `make run-example` zero-config against the docker-compose Postgres.
+package main
+
+import (
+	"database/sql"
+	"net/http"
+	"os"
+
+	"github.com/gin-gonic/gin"
+	_ "github.com/lib/pq"
+
+	"go.uber.org/zap"
+
+	apperrors "github.com/jorge-sanchez/go-service-template/pkg/errors"
+	"github.com/jorge-sanchez/go-service-template/pkg/logger"
+	"github.com/jorge-sanchez/go-service-template/services/example/internal/handler"
+	"github.com/jorge-sanchez/go-service-template/services/example/internal/repository"
+	"github.com/jorge-sanchez/go-service-template/services/example/internal/service"
+)
+
+func envOr(key, fallback string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return fallback
+}
+
+func main() {
+	env := envOr("APP_ENV", "local")
+
+	log, err := logger.New(logger.Config{Env: env, Level: envOr("LOG_LEVEL", "info")})
+	if err != nil {
+		panic(err)
+	}
+	defer func() { _ = log.Sync() }()
+
+	dsn := envOr("DATABASE_URL", "postgres://app:app@localhost:5432/app?sslmode=disable")
+	db, err := sql.Open("postgres", dsn)
+	if err != nil {
+		log.Fatal("open database", zap.Error(err))
+	}
+	if err := db.Ping(); err != nil {
+		log.Fatal("ping database", zap.Error(err))
+	}
+
+	repo := repository.NewPostgresWidgetRepository(db)
+	svc := service.NewWidgetService(repo)
+	h := handler.NewWidgetHandler(svc)
+
+	if env != "local" {
+		gin.SetMode(gin.ReleaseMode)
+	}
+	router := gin.New()
+	router.Use(gin.Recovery())
+	router.Use(logger.GinMiddleware(log))
+	router.Use(apperrors.ErrorHandler())
+
+	router.GET("/health", func(c *gin.Context) {
+		c.Status(http.StatusOK)
+	})
+	h.RegisterRoutes(router.Group("/v1"))
+
+	addr := ":" + envOr("PORT", "8080")
+	log.Info("example service listening", zap.String("addr", addr))
+	if err := router.Run(addr); err != nil {
+		log.Fatal("server exited", zap.Error(err))
+	}
+}

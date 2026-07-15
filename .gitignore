@@ -1,0 +1,20 @@
+# Environment
+.env.local
+.env.*.local
+
+# Secrets
+.keys/
+
+# Build artifacts
+bin/
+dist/
+
+# Test artifacts
+coverage.out
+coverage-*.out
+*.test
+
+# Editor / OS noise
+.DS_Store
+.idea/
+.vscode/

@@ -1,0 +1,9 @@
+go 1.25.0
+
+use (
+	./pkg/errors
+	./pkg/logger
+	./pkg/pagination
+	./pkg/testdb
+	./services/example
+)
