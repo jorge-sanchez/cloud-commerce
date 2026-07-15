@@ -59,6 +59,8 @@ func main() {
 		repository.WithEventRecorder(outbox.NewRecorder()))
 	svc := service.NewProductService(repo)
 	h := handler.NewProductHandler(svc)
+	collections := handler.NewCollectionHandler(
+		service.NewCollectionService(repository.NewPostgresCollectionRepository(db)))
 
 	// Relay transport (ADR-002 amendment): Pub/Sub when PUBSUB_TOPIC is
 	// set; a log-only deliverer keeps local development broker-free.
@@ -102,7 +104,9 @@ func main() {
 		c.Status(http.StatusOK)
 	})
 
-	h.RegisterRoutes(router.Group("/v1", auth.Middleware(verifier)))
+	v1 := router.Group("/v1", auth.Middleware(verifier))
+	h.RegisterRoutes(v1)
+	collections.RegisterRoutes(v1)
 
 	router.POST("/internal/outbox/drain",
 		outbox.DrainHandler(relay, os.Getenv("OUTBOX_DRAIN_TOKEN")))
