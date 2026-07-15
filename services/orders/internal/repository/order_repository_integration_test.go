@@ -165,7 +165,7 @@ func TestPostgresOrderRepository_MarkPaidIfPayable_PendingThenRepeat_PaysOnceThe
 	order, err := repo.PlaceOrderFromCart(context.Background(), cart.ID, "buyer@example.test")
 	require.NoError(t, err)
 
-	paid, err := repo.MarkPaidIfPayable(context.Background(), order.ID)
+	paid, err := repo.MarkPaidIfPayable(context.Background(), order.ID, "pi_test_ref")
 	require.NoError(t, err)
 	assert.Equal(t, domain.OrderStatusPaid, paid.Status)
 
@@ -175,14 +175,14 @@ func TestPostgresOrderRepository_MarkPaidIfPayable_PendingThenRepeat_PaysOnceThe
 	).Scan(&eventCount))
 	assert.Equal(t, 1, eventCount, "order_paid must be recorded with the transition")
 
-	_, err = repo.MarkPaidIfPayable(context.Background(), order.ID)
+	_, err = repo.MarkPaidIfPayable(context.Background(), order.ID, "pi_test_ref")
 	require.ErrorIs(t, err, apperrors.ErrConflict, "a second payment must be rejected by the entity")
 }
 
 func TestPostgresOrderRepository_MarkPaidIfPayable_UnknownOrder_ReturnsNotFound(t *testing.T) {
 	repo := NewPostgresOrderRepository(openMigratedDB(t))
 
-	_, err := repo.MarkPaidIfPayable(context.Background(), "33333333-3333-3333-3333-333333333333")
+	_, err := repo.MarkPaidIfPayable(context.Background(), "33333333-3333-3333-3333-333333333333", "pi_test_ref")
 
 	require.ErrorIs(t, err, apperrors.ErrNotFound)
 }
@@ -226,7 +226,7 @@ func TestPostgresOrderRepository_FulfillIfFulfillable_PaidOrder_FulfillsWithTrac
 	cart := cartWithItem(t, repo)
 	order, err := repo.PlaceOrderFromCart(context.Background(), cart.ID, "buyer@example.test")
 	require.NoError(t, err)
-	_, err = repo.MarkPaidIfPayable(context.Background(), order.ID)
+	_, err = repo.MarkPaidIfPayable(context.Background(), order.ID, "pi_test_ref")
 	require.NoError(t, err)
 
 	fulfilled, err := repo.FulfillIfFulfillable(context.Background(), tenantA, order.ID, "TRK-123", "olva")
