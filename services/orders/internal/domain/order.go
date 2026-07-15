@@ -256,15 +256,19 @@ func NewOrderPlacedEvent(o *Order, at time.Time) OrderPlacedEvent {
 // OrderPaidEvent is emitted when payment confirms; inventory consumes it to
 // decrement stock (#18).
 type OrderPaidEvent struct {
-	OrderID  string      `json:"order_id"`
-	TenantID string      `json:"tenant_id"`
-	Items    []EventItem `json:"items"`
-	PaidAt   time.Time   `json:"paid_at"`
+	OrderID    string      `json:"order_id"`
+	Number     int64       `json:"number"`
+	TenantID   string      `json:"tenant_id"`
+	Email      string      `json:"email"`
+	TotalCents int64       `json:"total_cents"`
+	Currency   string      `json:"currency"`
+	Items      []EventItem `json:"items"`
+	PaidAt     time.Time   `json:"paid_at"`
 }
 
 // NewOrderPaidEvent builds the event from the persisted order.
 func NewOrderPaidEvent(o *Order, at time.Time) OrderPaidEvent {
-	return OrderPaidEvent{OrderID: o.ID, TenantID: o.TenantID, Items: eventItems(o), PaidAt: at}
+	return OrderPaidEvent{OrderID: o.ID, Number: o.Number, TenantID: o.TenantID, Email: o.Email, TotalCents: o.TotalCents, Currency: o.Currency, Items: eventItems(o), PaidAt: at}
 }
 
 func eventItems(o *Order) []EventItem {

@@ -109,3 +109,38 @@ resource "google_pubsub_subscription" "orders_events_inventory" {
 
   depends_on = [google_service_account_iam_member.pubsub_agent_token_creator]
 }
+
+# Second consumer of orders-events: buyer email (issue #29).
+variable "notifications_push_endpoint" {
+  description = "Notifications service Pub/Sub push URL"
+  type        = string
+  default     = "https://notifications-bjm36sbwlq-uc.a.run.app/internal/events/pubsub"
+}
+
+resource "google_pubsub_subscription" "orders_events_notifications" {
+  name  = "orders-events-notifications"
+  topic = google_pubsub_topic.orders_events.id
+
+  ack_deadline_seconds = 30
+
+  push_config {
+    push_endpoint = var.notifications_push_endpoint
+
+    oidc_token {
+      service_account_email = google_service_account.pubsub_pusher.email
+      audience              = var.notifications_push_endpoint
+    }
+  }
+
+  retry_policy {
+    minimum_backoff = "10s"
+    maximum_backoff = "600s"
+  }
+
+  expiration_policy {
+    ttl = ""
+  }
+  message_retention_duration = "604800s"
+
+  depends_on = [google_service_account_iam_member.pubsub_agent_token_creator]
+}

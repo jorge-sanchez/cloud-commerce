@@ -71,6 +71,9 @@ jobs:
             if [ "${{ inputs.service }}" = "merchants" ]; then
               SECRETS="$SECRETS,JWT_PRIVATE_KEY=jwt-private-key:latest"
             fi
+            if [ "${{ inputs.service }}" = "notifications" ]; then
+              SECRETS="$SECRETS,RESEND_API_KEY=resend-api-key:latest"
+            fi
             if [ "${{ inputs.service }}" = "orders" ]; then
               SECRETS="$SECRETS,STRIPE_SECRET_KEY=stripe-secret-key:latest"
               SECRETS="$SECRETS,STRIPE_WEBHOOK_SECRET=stripe-webhook-secret:latest"
@@ -94,6 +97,10 @@ jobs:
             ENV_VARS="$ENV_VARS,CATALOG_URL=https://catalog-bjm36sbwlq-uc.a.run.app"
             ENV_VARS="$ENV_VARS,PUBSUB_TOPIC=orders-events"
             ENV_VARS="$ENV_VARS,PAYMENT_PROVIDER=stripe"
+          fi
+          if [ "${{ inputs.service }}" = "notifications" ]; then
+            ENV_VARS="$ENV_VARS,PUBSUB_PUSH_SA=${{ vars.GCP_PUBSUB_PUSH_SA }}"
+            ENV_VARS="$ENV_VARS,PUBSUB_AUDIENCE=https://notifications-bjm36sbwlq-uc.a.run.app/internal/events/pubsub"
           fi
           if [ "${{ inputs.service }}" = "inventory" ]; then
             # Pub/Sub push auth: only this SA, with this audience.
