@@ -32,4 +32,10 @@ tfplan
 # Frontend build artifacts
 node_modules/
 services/admin/web/dist/
+services/admin/web/tsconfig.tsbuildinfo
+
+# The embedded-SPA placeholder must be tracked despite the global dist/
+# rule: re-include the directory, ignore its contents, keep index.html.
+!services/admin/internal/web/dist/
+services/admin/internal/web/dist/*
 !services/admin/internal/web/dist/index.html
