@@ -36,6 +36,10 @@ type PaymentService interface {
 	ConfirmPayment(ctx context.Context, orderID, reference string) (*domain.Order, error)
 	// RefundOrder refunds through the provider then transitions the order.
 	RefundOrder(ctx context.Context, tenantID, actorRole, orderID string) (*domain.Order, error)
+	// ReconcilePayment marks an order paid on the provider's word (webhook
+	// path, #25) — the provider already verified the payment; no gateway
+	// round-trip. Idempotent via MarkPaidIfPayable.
+	ReconcilePayment(ctx context.Context, orderID, reference string) (*domain.Order, error)
 }
 
 type paymentService struct {
@@ -63,6 +67,10 @@ func (s *paymentService) ConfirmPayment(ctx context.Context, orderID, reference 
 	if err := s.gateway.ConfirmPayment(ctx, orderID, reference); err != nil {
 		return nil, err
 	}
+	return s.repo.MarkPaidIfPayable(ctx, orderID, reference)
+}
+
+func (s *paymentService) ReconcilePayment(ctx context.Context, orderID, reference string) (*domain.Order, error) {
 	return s.repo.MarkPaidIfPayable(ctx, orderID, reference)
 }
 

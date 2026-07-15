@@ -103,3 +103,16 @@ rules here.
  */
 export interface OrderHandler {
 }
+
+//////////
+// source: stripe_webhook_handler.go
+
+/**
+ * StripeWebhookHandler reconciles payments without buyer polling (#25):
+ * Stripe signs each delivery with the endpoint's signing secret; a verified
+ * payment_intent.succeeded marks the order paid. Deliveries are
+ * at-least-once and can race the buyer's own confirm — MarkPaidIfPayable
+ * makes both paths idempotent.
+ */
+export interface StripeWebhookHandler {
+}

@@ -73,6 +73,7 @@ jobs:
             fi
             if [ "${{ inputs.service }}" = "orders" ]; then
               SECRETS="$SECRETS,STRIPE_SECRET_KEY=stripe-secret-key:latest"
+              SECRETS="$SECRETS,STRIPE_WEBHOOK_SECRET=stripe-webhook-secret:latest"
             fi
             SECRET_FLAG="--set-secrets=$SECRETS"
           fi

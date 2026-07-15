@@ -146,8 +146,12 @@ func main() {
 	h.RegisterBuyerRoutes(router.Group("/v1"))
 	h.RegisterMerchantRoutes(router.Group("/v1", auth.Middleware(verifier)))
 
-	router.POST("/internal/outbox/drain",
+	internal := router.Group("/internal")
+	internal.POST("/outbox/drain",
 		outbox.DrainHandler(relay, os.Getenv("OUTBOX_DRAIN_TOKEN")))
+	// Stripe signs deliveries with the endpoint secret; empty fails closed.
+	handler.NewStripeWebhookHandler(payments, os.Getenv("STRIPE_WEBHOOK_SECRET")).
+		RegisterRoutes(internal)
 
 	addr := ":" + envOr("PORT", "8080")
 	log.Info("orders service listening", zap.String("addr", addr))
