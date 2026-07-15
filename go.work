@@ -8,6 +8,7 @@ use (
 	./pkg/outbox
 	./pkg/pagination
 	./pkg/testdb
+	./services/catalog
 	./services/example
 	./services/merchants
 )
