@@ -58,7 +58,11 @@ func (f *fakeOrderRepo) PlaceOrderFromCart(_ context.Context, _, _ string) (*dom
 	return f.order, f.err
 }
 
-func (f *fakeOrderRepo) MarkPaidIfPayable(_ context.Context, _ string) (*domain.Order, error) {
+func (f *fakeOrderRepo) MarkPaidIfPayable(_ context.Context, _, _ string) (*domain.Order, error) {
+	return f.order, f.err
+}
+
+func (f *fakeOrderRepo) RefundIfRefundable(_ context.Context, _, _ string) (*domain.Order, error) {
 	return f.order, f.err
 }
 

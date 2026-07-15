@@ -219,6 +219,45 @@ func (r *PostgresStockRepository) AdjustIfSufficient(ctx context.Context, tenant
 	return &s, nil
 }
 
+// ApplyStockRestore is the order_refunded consumer's write: dedupe insert
+// and additive updates in one transaction (rows that were never
+// initialized are skipped, mirroring deduction).
+func (r *PostgresStockRepository) ApplyStockRestore(ctx context.Context, tenantID, eventID string, items []domain.StockDeduction) error {
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return apperrors.ErrInternal.Wrap(err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	res, err := tx.ExecContext(ctx,
+		`INSERT INTO processed_events (event_id) VALUES ($1) ON CONFLICT DO NOTHING`, eventID)
+	if err != nil {
+		return apperrors.ErrInternal.Wrap(err)
+	}
+	if n, err := res.RowsAffected(); err != nil {
+		return apperrors.ErrInternal.Wrap(err)
+	} else if n == 0 {
+		return nil // replay — already applied
+	}
+
+	for _, item := range items {
+		if _, err := tx.ExecContext(ctx, `
+			UPDATE stock_levels sl SET on_hand = sl.on_hand + $1, updated_at = NOW()
+			FROM locations l
+			WHERE l.id = sl.location_id AND l.is_default
+			  AND sl.tenant_id = $2 AND sl.variant_id = $3`,
+			item.Qty, tenantID, item.VariantID,
+		); err != nil {
+			return apperrors.ErrInternal.Wrap(err)
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return apperrors.ErrInternal.Wrap(err)
+	}
+	return nil
+}
+
 // ApplyStockDeduction is the order_paid consumer's write: dedupe insert
 // and per-line clamped deductions in one transaction.
 func (r *PostgresStockRepository) ApplyStockDeduction(ctx context.Context, tenantID, eventID string, items []domain.StockDeduction) error {

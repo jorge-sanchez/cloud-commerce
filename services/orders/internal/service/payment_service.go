@@ -23,6 +23,8 @@ type PaymentGateway interface {
 	// ConfirmPayment verifies a completed payment reference; a reference
 	// that does not verify returns apperrors.ErrValidation.
 	ConfirmPayment(ctx context.Context, orderID, reference string) error
+	// RefundPayment returns the money for a previously confirmed payment.
+	RefundPayment(ctx context.Context, orderID, reference string) error
 }
 
 // PaymentService is the buyer-facing payment flow.
@@ -32,6 +34,8 @@ type PaymentService interface {
 	// ConfirmPayment verifies the provider reference and marks the order
 	// paid (the entity decides; order_paid is recorded in that transaction).
 	ConfirmPayment(ctx context.Context, orderID, reference string) (*domain.Order, error)
+	// RefundOrder refunds through the provider then transitions the order.
+	RefundOrder(ctx context.Context, tenantID, actorRole, orderID string) (*domain.Order, error)
 }
 
 type paymentService struct {
@@ -59,5 +63,25 @@ func (s *paymentService) ConfirmPayment(ctx context.Context, orderID, reference 
 	if err := s.gateway.ConfirmPayment(ctx, orderID, reference); err != nil {
 		return nil, err
 	}
-	return s.repo.MarkPaidIfPayable(ctx, orderID)
+	return s.repo.MarkPaidIfPayable(ctx, orderID, reference)
+}
+
+// RefundOrder is merchant-initiated (owner only — the handler passes the
+// verified role). The provider refund happens first; the state transition
+// and order_refunded event follow in the repository transaction.
+func (s *paymentService) RefundOrder(ctx context.Context, tenantID, actorRole, orderID string) (*domain.Order, error) {
+	if actorRole != "owner" {
+		return nil, apperrors.ErrForbidden
+	}
+	order, err := s.repo.GetByID(ctx, tenantID, orderID)
+	if err != nil {
+		return nil, err
+	}
+	if order.Status != domain.OrderStatusPaid && order.Status != domain.OrderStatusFulfilled {
+		return nil, apperrors.ErrConflict.Wrap(domain.ErrNotRefundable)
+	}
+	if err := s.gateway.RefundPayment(ctx, order.ID, order.PaymentReference); err != nil {
+		return nil, err
+	}
+	return s.repo.RefundIfRefundable(ctx, tenantID, orderID)
 }

@@ -188,7 +188,7 @@ func (r *PostgresOrderRepository) PlaceOrderFromCart(ctx context.Context, cartID
 // MarkPaidIfPayable loads the order inside a transaction, lets the entity
 // decide the transition, and persists what the entity decided. Looked up by
 // order ID alone: payment confirmation arrives on the buyer's capability.
-func (r *PostgresOrderRepository) MarkPaidIfPayable(ctx context.Context, orderID string) (*domain.Order, error) {
+func (r *PostgresOrderRepository) MarkPaidIfPayable(ctx context.Context, orderID, paymentReference string) (*domain.Order, error) {
 	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
 		return nil, apperrors.ErrInternal.Wrap(err)
@@ -208,6 +208,54 @@ func (r *PostgresOrderRepository) MarkPaidIfPayable(ctx context.Context, orderID
 	if err := order.MarkPaid(); err != nil { // entity decides
 		return nil, apperrors.ErrConflict.Wrap(err)
 	}
+	order.PaymentReference = paymentReference
+
+	if _, err := tx.ExecContext(ctx, `
+		UPDATE orders SET status = $1, payment_reference = $2, updated_at = NOW() WHERE id = $3`,
+		string(order.Status), order.PaymentReference, order.ID,
+	); err != nil {
+		return nil, apperrors.ErrInternal.Wrap(err)
+	}
+
+	if r.events != nil {
+		event := domain.NewOrderPaidEvent(order, time.Now().UTC())
+		env, err := events.New(order.TenantID, order.ID, domain.OrderPaidEventType, event.PaidAt, event)
+		if err != nil {
+			return nil, apperrors.ErrInternal.Wrap(err)
+		}
+		if err := r.events.Record(ctx, tx, env); err != nil {
+			return nil, err
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return nil, apperrors.ErrInternal.Wrap(err)
+	}
+	return order, nil
+}
+
+// RefundIfRefundable loads the order inside a transaction, lets the entity
+// decide the transition, and persists what the entity decided.
+func (r *PostgresOrderRepository) RefundIfRefundable(ctx context.Context, tenantID, orderID string) (*domain.Order, error) {
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, apperrors.ErrInternal.Wrap(err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	order, err := r.scanOrder(tx.QueryRowContext(ctx,
+		`SELECT `+orderColumns+` FROM orders WHERE tenant_id = $1 AND id = $2 FOR UPDATE`, tenantID, orderID))
+	if err != nil {
+		return nil, err
+	}
+	order.Items, err = r.loadItems(ctx, tx, "order_items", "order_id", order.ID)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := order.Refund(); err != nil { // entity decides
+		return nil, apperrors.ErrConflict.Wrap(err)
+	}
 
 	if _, err := tx.ExecContext(ctx, `
 		UPDATE orders SET status = $1, updated_at = NOW() WHERE id = $2`,
@@ -217,8 +265,8 @@ func (r *PostgresOrderRepository) MarkPaidIfPayable(ctx context.Context, orderID
 	}
 
 	if r.events != nil {
-		event := domain.NewOrderPaidEvent(order, time.Now().UTC())
-		env, err := events.New(order.TenantID, order.ID, domain.OrderPaidEventType, event.PaidAt, event)
+		event := domain.NewOrderRefundedEvent(order, time.Now().UTC())
+		env, err := events.New(order.TenantID, order.ID, domain.OrderRefundedEventType, event.RefundedAt, event)
 		if err != nil {
 			return nil, apperrors.ErrInternal.Wrap(err)
 		}
@@ -281,7 +329,7 @@ func (r *PostgresOrderRepository) FulfillIfFulfillable(ctx context.Context, tena
 	return order, nil
 }
 
-const orderColumns = `id, number, tenant_id, email, currency, total_cents, status, tracking_number, carrier, created_at, updated_at`
+const orderColumns = `id, number, tenant_id, email, currency, total_cents, status, payment_reference, tracking_number, carrier, created_at, updated_at`
 
 func (r *PostgresOrderRepository) GetByID(ctx context.Context, tenantID, orderID string) (*domain.Order, error) {
 	order, err := r.scanOrder(r.db.QueryRowContext(ctx,
@@ -334,7 +382,7 @@ func (r *PostgresOrderRepository) ListByTenant(ctx context.Context, tenantID str
 	for rows.Next() {
 		var o domain.Order
 		var status string
-		if err := rows.Scan(&o.ID, &o.Number, &o.TenantID, &o.Email, &o.Currency, &o.TotalCents, &status, &o.TrackingNumber, &o.Carrier, &o.CreatedAt, &o.UpdatedAt); err != nil {
+		if err := rows.Scan(&o.ID, &o.Number, &o.TenantID, &o.Email, &o.Currency, &o.TotalCents, &status, &o.PaymentReference, &o.TrackingNumber, &o.Carrier, &o.CreatedAt, &o.UpdatedAt); err != nil {
 			return nil, 0, apperrors.ErrInternal.Wrap(err)
 		}
 		o.Status = domain.OrderStatus(status)
@@ -402,7 +450,7 @@ func (r *PostgresOrderRepository) loadItems(ctx context.Context, q querier, tabl
 func (r *PostgresOrderRepository) scanOrder(row *sql.Row) (*domain.Order, error) {
 	var o domain.Order
 	var status string
-	err := row.Scan(&o.ID, &o.Number, &o.TenantID, &o.Email, &o.Currency, &o.TotalCents, &status, &o.TrackingNumber, &o.Carrier, &o.CreatedAt, &o.UpdatedAt)
+	err := row.Scan(&o.ID, &o.Number, &o.TenantID, &o.Email, &o.Currency, &o.TotalCents, &status, &o.PaymentReference, &o.TrackingNumber, &o.Carrier, &o.CreatedAt, &o.UpdatedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, apperrors.ErrNotFound
 	}

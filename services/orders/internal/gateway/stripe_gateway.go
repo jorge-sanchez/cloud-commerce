@@ -7,6 +7,7 @@ import (
 
 	stripe "github.com/stripe/stripe-go/v82"
 	"github.com/stripe/stripe-go/v82/paymentintent"
+	"github.com/stripe/stripe-go/v82/refund"
 
 	apperrors "github.com/jorge-sanchez/cloud-commerce/pkg/errors"
 	"github.com/jorge-sanchez/cloud-commerce/services/orders/internal/domain"
@@ -58,6 +59,18 @@ func (g *StripeGateway) ConfirmPayment(_ context.Context, orderID, reference str
 	}
 	if pi.Status != stripe.PaymentIntentStatusSucceeded {
 		return apperrors.ErrValidation.Wrap(fmt.Errorf("payment has not succeeded (status %s)", pi.Status))
+	}
+	return nil
+}
+
+// RefundPayment refunds the full PaymentIntent.
+func (g *StripeGateway) RefundPayment(_ context.Context, orderID, reference string) error {
+	pi, err := paymentintent.Get(reference, nil)
+	if err != nil || pi.Metadata["order_id"] != orderID {
+		return apperrors.ErrValidation.Wrap(fmt.Errorf("payment reference does not verify for this order"))
+	}
+	if _, err := refund.New(&stripe.RefundParams{PaymentIntent: stripe.String(reference)}); err != nil {
+		return apperrors.ErrServiceUnavailable.Wrap(err)
 	}
 	return nil
 }
