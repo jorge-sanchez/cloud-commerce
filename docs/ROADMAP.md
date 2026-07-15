@@ -113,6 +113,12 @@ What a merchant needs the week after their first sale.
 **Exit criteria:** a merchant can run daily operations without touching the
 database or asking us for help.
 
+*Status: **done** (2026-07-15) — scheduled event drains, fulfillment with
+tracking, refunds through the payment port (stock restored by event),
+sales analytics, Stripe webhook reconciliation, and buyer email via Resend
+(receipt + shipping). Follow-up: verify a sending domain in Resend to email
+arbitrary buyers.*
+
 ## Phase 4 — Platform expansion
 
 Each of these is its own project, gated on the core being solid:
