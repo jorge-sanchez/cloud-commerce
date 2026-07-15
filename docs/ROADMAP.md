@@ -43,10 +43,9 @@ service, CI with lint/test/ratchet checks.
 - **Multi-tenancy model (ADR)** — shared Postgres with `tenant_id` vs
   schema-per-tenant. Recommendation: shared tables with `tenant_id`, which is
   what the example service already assumes; revisit only at real scale.
-- **Event backbone (ADR)** — CLAUDE.md already assumes a recovery process
-  re-publishes failed events; make that real with a transactional outbox.
-  A Postgres-backed outbox + poller is enough to start; a broker (NATS,
-  Kafka) is a later swap behind the same producer ports.
+- **Event backbone (ADR)** — decided and built: transactional outbox with a
+  relay (ADR-002). Google Pub/Sub becomes the relay's transport when a real
+  cross-service consumer exists (ADR-002 amendment).
 - **Deployment target** — decided: Cloud Run (ADR-003). Remaining: get a
   single service deployed end-to-end, migrations included, before there are
   five services to retrofit.

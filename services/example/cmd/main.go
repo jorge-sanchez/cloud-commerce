@@ -64,9 +64,17 @@ func main() {
 				zap.String("tenant_id", env.TenantID))
 			return nil
 		}), producer.WithLogger(log))
-	relayCtx, stopRelay := context.WithCancel(context.Background())
-	defer stopRelay()
-	go relay.Run(relayCtx)
+
+	// On Cloud Run the relay must not be a background goroutine — CPU is
+	// throttled outside requests and instances scale to zero (ADR-003).
+	// Cloud Scheduler POSTs /internal/outbox/drain instead, authenticated
+	// with OUTBOX_DRAIN_TOKEN. Locally, a poller keeps `make run-example`
+	// zero-config.
+	if env == "local" {
+		relayCtx, stopRelay := context.WithCancel(context.Background())
+		defer stopRelay()
+		go relay.Run(relayCtx)
+	}
 
 	if env != "local" {
 		gin.SetMode(gin.ReleaseMode)
@@ -80,6 +88,10 @@ func main() {
 		c.Status(http.StatusOK)
 	})
 	h.RegisterRoutes(router.Group("/v1"))
+	// Internal surface — not part of the public API. The drain endpoint
+	// fails closed when OUTBOX_DRAIN_TOKEN is unset.
+	handler.NewOutboxHandler(relay, os.Getenv("OUTBOX_DRAIN_TOKEN")).
+		RegisterRoutes(router.Group("/internal"))
 
 	addr := ":" + envOr("PORT", "8080")
 	log.Info("example service listening", zap.String("addr", addr))

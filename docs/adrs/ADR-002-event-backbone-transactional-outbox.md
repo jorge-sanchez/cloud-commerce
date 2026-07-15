@@ -76,3 +76,9 @@ Revisit trigger: when cross-service fan-out (several consumers per event) or
 throughput makes per-service Postgres delivery a bottleneck, introduce a
 broker as the relay's transport. Domain code, producer ports, and the outbox
 itself do not change — only the relay's delivery step.
+
+*Amended 2026-07-15:* with Google Cloud as the platform (ADR-003), that
+broker will be **Google Pub/Sub** — a `Deliverer` implementation publishing
+to a topic. Pub/Sub is zero-ops and pay-per-use with a permanent free tier,
+so the swap is gated on need (a real second consumer), not cost. The outbox
+stays either way: no broker solves dual-write atomicity.

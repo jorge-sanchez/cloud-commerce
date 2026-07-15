@@ -1,0 +1,16 @@
+# Keep image build contexts small — only Go sources and module files matter.
+.git/
+.github/
+.nwave/
+.idea/
+.vscode/
+bin/
+dist/
+docs/
+scripts/
+*.md
+coverage*.out
+*.test
+.env.local
+.env.*.local
+.keys/
