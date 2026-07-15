@@ -92,30 +92,30 @@ Create(ctx, w *Widget) (*Widget, error)
 
 ---
 
-## Service constructors — options pattern
+## Constructors — options pattern
 
-Required dependencies are positional. Optional dependencies use `Option` functions. Never add a new constructor variant (`NewXxxWithY`); add a `WithY` option instead.
+Required dependencies are positional. Optional dependencies use `Option` functions. Never add a new constructor variant (`NewXxxWithY`); add a `WithY` option instead. Applies to services, repositories, and infrastructure components alike.
 
 ```go
-type Option func(*widgetService)
+type Option func(*PostgresWidgetRepository)
 
-func WithEventPublisher(ep EventPublisher) Option {
-    return func(s *widgetService) { s.events = ep }
+func WithEventRecorder(rec EventRecorder) Option {
+    return func(r *PostgresWidgetRepository) { r.events = rec }
 }
 
-func NewWidgetService(repo domain.WidgetRepository, opts ...Option) WidgetService {
-    s := &widgetService{repo: repo}
-    for _, opt := range opts { opt(s) }
-    return s
+func NewPostgresWidgetRepository(db *sql.DB, opts ...Option) *PostgresWidgetRepository {
+    r := &PostgresWidgetRepository{db: db}
+    for _, opt := range opts { opt(r) }
+    return r
 }
 ```
 
 Mark optional fields with a comment:
 
 ```go
-type widgetService struct {
-    repo   domain.WidgetRepository // required
-    events EventPublisher          // may be nil
+type PostgresWidgetRepository struct {
+    db     *sql.DB       // required
+    events EventRecorder // may be nil
 }
 ```
 
@@ -201,26 +201,33 @@ Every test file declares its budget at the top. Each behavior gets at most two t
 
 Integration tests provision databases through `pkg/testdb.Open(t)` — a shared server when `TEST_POSTGRES_DSN` is set (CI), a testcontainer otherwise. Never start raw Postgres testcontainers yourself.
 
+### Cross-tenant negative cases (ADR-001)
+
+The `tenant_id` filter in repositories is the tenancy security boundary. Every repository's integration suite must include at least one cross-tenant negative case: read another tenant's row and expect `apperrors.ErrNotFound` (another tenant's data must be indistinguishable from missing data).
+
 ### Test doubles — hand-rolled fakes only
 
 No `gomock`, no `testify/mock`. Write fakes at the port boundary (interfaces defined by the domain or service layer). Track call history in the fake struct for post-test assertions.
 
 ```go
-type fakePublisher struct {
-    err    error
-    events []domain.WidgetPublishedEvent
+type fakeDeliverer struct {
+    err       error
+    delivered []events.Envelope
 }
 
-func (f *fakePublisher) PublishWidgetPublished(_ context.Context, e domain.WidgetPublishedEvent) error {
-    f.events = append(f.events, e)
-    return f.err
+func (f *fakeDeliverer) Deliver(_ context.Context, env events.Envelope) error {
+    if f.err != nil {
+        return f.err
+    }
+    f.delivered = append(f.delivered, env)
+    return nil
 }
 ```
 
 Use compile-time interface checks in test files when it aids readability:
 
 ```go
-var _ EventPublisher = (*fakePublisher)(nil)
+var _ producer.Deliverer = (*fakeDeliverer)(nil)
 ```
 
 ### Naming
@@ -254,17 +261,27 @@ assert.Equal(t, "widget-001", w.ID)
 
 ## Events
 
-Domain events are defined in the domain package alongside the aggregate. The producer is a port interface; the service depends on the interface, not the concrete implementation.
+Domain events are defined in the domain package alongside the aggregate, wrapped in the shared envelope from `pkg/events`, and persisted through the transactional outbox (ADR-002) — never published directly from the request path.
 
-Publish failures are not surfaced as errors to the caller when the row has already been persisted — the state change is durable; a recovery process owns retries:
+The repository records the envelope in the **same transaction** as the state change it describes, via the `EventRecorder` port implemented by `producer.OutboxRecorder`:
 
 ```go
-if publishErr := s.events.PublishWidgetPublished(ctx, event); publishErr != nil {
-    return published, nil  // row is safe in DB; recovery handles the rest
+// inside PublishIfPublishable, before tx.Commit()
+if r.events != nil {
+    event := domain.NewWidgetPublishedEvent(widget, time.Now().UTC())
+    env, err := events.New(widget.TenantID, widget.ID, domain.WidgetPublishedEventType, event.PublishedAt, event)
+    if err != nil {
+        return nil, apperrors.ErrInternal.Wrap(err)
+    }
+    if err := r.events.Record(ctx, tx, env); err != nil {
+        return nil, err  // rolls back — state and event commit or fail together
+    }
 }
 ```
 
-Build event payloads from the persisted domain object (what the repo returned), not from the raw request.
+`producer.Relay` drains undelivered rows in insertion order and owns delivery retries — delivery failures never reach the request path. Delivery is at-least-once, so consumers must be idempotent (dedupe on envelope ID).
+
+Build event payloads from the persisted domain object (what the entity decided), not from the raw request.
 
 ---
 
@@ -273,6 +290,8 @@ Build event payloads from the persisted domain object (what the repo returned), 
 **Naming**: `NNNNNN_short_description.{up,down}.sql` — six-digit zero-padded sequence, per service under `services/<name>/migrations/`.
 
 **Structure**: Lead with a comment explaining purpose. Use idempotent DDL (`IF NOT EXISTS` / `IF EXISTS`). Every `up` migration must have a matching `down` migration. When the database is empty and migrations run from scratch, edit the original migration file instead of creating a rename migration.
+
+**Indexes**: Composite indexes on tenant-owned tables lead with `tenant_id` (ADR-001) — every query filters on it first. Platform infrastructure tables scanned across tenants (e.g. the outbox) are the exception.
 
 ---
 
@@ -301,7 +320,8 @@ Types: `feat`, `fix`, `refactor`, `test`, `docs`, `chore`. Scope is the service 
 - Do not use `gomock` or `testify/mock`. Write hand-rolled fakes.
 - Do not string-match error messages in tests. Use `errors.Is`, `errors.As`, or check `AppError.Code`.
 - Do not insert child records outside the aggregate's `SaveWith*` method.
-- Do not surface event-publish failures as errors when the row is already persisted.
+- Do not publish events from the request path. Record them to the outbox inside the repository transaction (ADR-002); the relay owns delivery.
+- Do not write a repository without a cross-tenant negative integration test (ADR-001).
 - Do not serve 200/201 bodies as `gin.H` — named structs in `apitypes.go`; the ratchet check will fail the PR.
 - Do not share `internal/` packages across service boundaries.
 - Do not start raw Postgres testcontainers — use `pkg/testdb.Open(t)`.

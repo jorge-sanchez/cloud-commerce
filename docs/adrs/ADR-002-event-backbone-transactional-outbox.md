@@ -26,9 +26,11 @@ service, and low event volume for the foreseeable future.
 We will use a transactional outbox: each service writes domain events to its
 own `outbox` table in the same transaction as the state change, and a
 per-service relay drains the table in insertion order, delivering with
-at-least-once semantics and marking rows delivered. Services publish through
-the existing producer port interfaces; the outbox is an implementation
-detail behind them. The relay's initial transport is direct Postgres-backed
+at-least-once semantics and marking rows delivered. Repositories record
+events through an `EventRecorder` port (implemented by the producer
+package's outbox recorder) inside their own transaction — recording moved to
+the repository layer because that is the only place the state-change
+transaction exists. The relay's initial transport is direct Postgres-backed
 delivery (consumers read from the destination the relay writes); adopting a
 broker later replaces only the relay's delivery step.
 
