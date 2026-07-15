@@ -47,9 +47,9 @@ service, CI with lint/test/ratchet checks.
   re-publishes failed events; make that real with a transactional outbox.
   A Postgres-backed outbox + poller is enough to start; a broker (NATS,
   Kafka) is a later swap behind the same producer ports.
-- **Deployment target (ADR)** — pick one (managed k8s, ECS, Fly.io, …) and
-  get a single service deployed end-to-end, migrations included, before
-  there are five services to retrofit.
+- **Deployment target** — decided: Cloud Run (ADR-003). Remaining: get a
+  single service deployed end-to-end, migrations included, before there are
+  five services to retrofit.
 
 **Exit criteria:** a deployed hello-service with auth-gated, tenant-scoped
 endpoints and CI/CD to production.
