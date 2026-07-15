@@ -46,9 +46,10 @@ service, CI with lint/test/ratchet checks.
 - **Event backbone (ADR)** — decided and built: transactional outbox with a
   relay (ADR-002). Google Pub/Sub becomes the relay's transport when a real
   cross-service consumer exists (ADR-002 amendment).
-- **Deployment target** — decided: Cloud Run (ADR-003). Remaining: get a
-  single service deployed end-to-end, migrations included, before there are
-  five services to retrofit.
+- **Deployment target** — done: Cloud Run (ADR-003) with Terraform-managed
+  infrastructure (ADR-004) and Neon serverless Postgres (ADR-005). The
+  example service deploys end-to-end (build → migrate → deploy) via GitHub
+  Actions with keyless auth.
 
 **Exit criteria:** a deployed hello-service with auth-gated, tenant-scoped
 endpoints and CI/CD to production.
