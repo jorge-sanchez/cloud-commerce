@@ -68,12 +68,23 @@ func main() {
 		repository.WithEventRecorder(outbox.NewRecorder()))
 	svc := service.NewOrderService(repo, platform)
 
-	// PaymentGateway (ADR-008): the fake ships the flow until the Stripe
-	// adapter (#19). Fail fast on unknown providers — never silently fake.
-	if provider := envOr("PAYMENT_PROVIDER", "fake"); provider != "fake" {
+	// PaymentGateway (ADR-008): stripe in production, fake for local dev.
+	// Fail fast on unknown providers — never silently fake.
+	var gw service.PaymentGateway
+	switch provider := envOr("PAYMENT_PROVIDER", "fake"); provider {
+	case "fake":
+		gw = gateway.NewFakeGateway(envOr("FAKE_PAYMENT_SECRET", "local-dev-secret"))
+		log.Info("payment gateway: fake (no real money)")
+	case "stripe":
+		key := os.Getenv("STRIPE_SECRET_KEY")
+		if key == "" {
+			log.Fatal("STRIPE_SECRET_KEY must be set for PAYMENT_PROVIDER=stripe")
+		}
+		gw = gateway.NewStripeGateway(key)
+		log.Info("payment gateway: stripe")
+	default:
 		log.Fatal("unknown PAYMENT_PROVIDER", zap.String("provider", provider))
 	}
-	gw := gateway.NewFakeGateway(envOr("FAKE_PAYMENT_SECRET", "local-dev-secret"))
 	payments := service.NewPaymentService(repo, gw)
 	h := handler.NewOrderHandler(svc, payments)
 
