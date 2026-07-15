@@ -38,6 +38,12 @@ type OrderResponse struct {
 	CreatedAt  time.Time      `json:"created_at"`
 }
 
+// PaymentIntentResponse is the provider handoff for the buyer client.
+type PaymentIntentResponse struct {
+	Reference    string `json:"reference"`
+	ClientSecret string `json:"client_secret"`
+}
+
 // ListOrdersResponse is the blessed offset-pagination envelope:
 // {items, total, page, page_size}.
 type ListOrdersResponse struct {

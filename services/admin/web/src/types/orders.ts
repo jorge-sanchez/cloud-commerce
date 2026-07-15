@@ -45,6 +45,13 @@ export interface OrderResponse {
   created_at: string /* RFC 3339 */;
 }
 /**
+ * PaymentIntentResponse is the provider handoff for the buyer client.
+ */
+export interface PaymentIntentResponse {
+  reference: string;
+  client_secret: string;
+}
+/**
  * ListOrdersResponse is the blessed offset-pagination envelope:
  * {items, total, page, page_size}.
  */
@@ -64,8 +71,8 @@ rules here.
 */
 
 /**
- * OrderHandler exposes both surfaces: the buyer cart/checkout routes
- * (public, capability-based) and the merchant order views (authed).
+ * OrderHandler exposes both surfaces: the buyer cart/checkout/payment
+ * routes (public, capability-based) and the merchant order views (authed).
  */
 export interface OrderHandler {
 }

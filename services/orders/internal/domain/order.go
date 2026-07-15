@@ -125,6 +125,11 @@ func NewOrderFromCart(cart *Cart, email string) (*Order, error) {
 	}, nil
 }
 
+// CanPay reports whether payment may be initialized for this order.
+func (o *Order) CanPay() bool {
+	return o.Status == OrderStatusPending
+}
+
 // MarkPaid transitions pending → paid. The entity decides its own
 // transitions — callers must not check or set Status directly.
 func (o *Order) MarkPaid() error {
@@ -232,6 +237,9 @@ type OrderRepository interface {
 	MarkPaidIfPayable(ctx context.Context, orderID string) (*Order, error)
 	// GetByID returns the order with items, tenant-scoped.
 	GetByID(ctx context.Context, tenantID, orderID string) (*Order, error)
+	// GetPublicByID returns the order by unguessable ID alone — the
+	// buyer's capability from checkout (see Cart).
+	GetPublicByID(ctx context.Context, orderID string) (*Order, error)
 	// ListByTenant returns one page of orders (with items), newest first.
 	ListByTenant(ctx context.Context, tenantID string, page, pageSize int) ([]*Order, int, error)
 }

@@ -65,7 +65,15 @@ func main() {
 	repo := repository.NewPostgresOrderRepository(db,
 		repository.WithEventRecorder(outbox.NewRecorder()))
 	svc := service.NewOrderService(repo, platform)
-	h := handler.NewOrderHandler(svc)
+
+	// PaymentGateway (ADR-008): the fake ships the flow until the Stripe
+	// adapter (#19). Fail fast on unknown providers — never silently fake.
+	if provider := envOr("PAYMENT_PROVIDER", "fake"); provider != "fake" {
+		log.Fatal("unknown PAYMENT_PROVIDER", zap.String("provider", provider))
+	}
+	gw := gateway.NewFakeGateway(envOr("FAKE_PAYMENT_SECRET", "local-dev-secret"))
+	payments := service.NewPaymentService(repo, gw)
+	h := handler.NewOrderHandler(svc, payments)
 
 	relay := outbox.NewRelay(db, outbox.DelivererFunc(
 		func(_ context.Context, env events.Envelope) error {

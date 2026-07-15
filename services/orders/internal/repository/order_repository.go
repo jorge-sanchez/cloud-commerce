@@ -248,6 +248,19 @@ func (r *PostgresOrderRepository) GetByID(ctx context.Context, tenantID, orderID
 	return order, nil
 }
 
+func (r *PostgresOrderRepository) GetPublicByID(ctx context.Context, orderID string) (*domain.Order, error) {
+	order, err := r.scanOrder(r.db.QueryRowContext(ctx,
+		`SELECT `+orderColumns+` FROM orders WHERE id = $1`, orderID))
+	if err != nil {
+		return nil, err
+	}
+	order.Items, err = r.loadItems(ctx, r.db, "order_items", "order_id", order.ID)
+	if err != nil {
+		return nil, err
+	}
+	return order, nil
+}
+
 func (r *PostgresOrderRepository) ListByTenant(ctx context.Context, tenantID string, page, pageSize int) ([]*domain.Order, int, error) {
 	var total int
 	if err := r.db.QueryRowContext(ctx,
