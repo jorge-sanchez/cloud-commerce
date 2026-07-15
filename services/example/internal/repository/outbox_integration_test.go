@@ -26,8 +26,8 @@ import (
 
 	apperrors "github.com/jorge-sanchez/cloud-commerce/pkg/errors"
 	"github.com/jorge-sanchez/cloud-commerce/pkg/events"
-	"github.com/jorge-sanchez/cloud-commerce/services/example/internal/domain"
 	"github.com/jorge-sanchez/cloud-commerce/pkg/outbox"
+	"github.com/jorge-sanchez/cloud-commerce/services/example/internal/domain"
 )
 
 // fakeDeliverer records delivered envelopes and can be told to fail.

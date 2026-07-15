@@ -1,5 +1,6 @@
-// The catalog service wires the layers together: repository → service →
-// handler. It verifies platform tokens (ADR-006) but never issues them.
+// The inventory service wires the layers together: repository → service →
+// handler. It verifies platform tokens (ADR-006) and consumes catalog
+// events via Pub/Sub push (ADR-002 amendment).
 package main
 
 import (
@@ -8,9 +9,9 @@ import (
 	"net/http"
 	"os"
 
-	"cloud.google.com/go/pubsub/v2"
 	"github.com/gin-gonic/gin"
 	_ "github.com/lib/pq"
+	"google.golang.org/api/idtoken"
 
 	"go.uber.org/zap"
 
@@ -19,10 +20,9 @@ import (
 	"github.com/jorge-sanchez/cloud-commerce/pkg/events"
 	"github.com/jorge-sanchez/cloud-commerce/pkg/logger"
 	"github.com/jorge-sanchez/cloud-commerce/pkg/outbox"
-	"github.com/jorge-sanchez/cloud-commerce/services/catalog/internal/handler"
-	"github.com/jorge-sanchez/cloud-commerce/services/catalog/internal/producer"
-	"github.com/jorge-sanchez/cloud-commerce/services/catalog/internal/repository"
-	"github.com/jorge-sanchez/cloud-commerce/services/catalog/internal/service"
+	"github.com/jorge-sanchez/cloud-commerce/services/inventory/internal/handler"
+	"github.com/jorge-sanchez/cloud-commerce/services/inventory/internal/repository"
+	"github.com/jorge-sanchez/cloud-commerce/services/inventory/internal/service"
 )
 
 func envOr(key, fallback string) string {
@@ -30,6 +30,18 @@ func envOr(key, fallback string) string {
 		return v
 	}
 	return fallback
+}
+
+// idtokenValidator validates Google-signed OIDC tokens on Pub/Sub pushes.
+type idtokenValidator struct{}
+
+func (idtokenValidator) Validate(ctx context.Context, token, audience string) (string, error) {
+	payload, err := idtoken.Validate(ctx, token, audience)
+	if err != nil {
+		return "", err
+	}
+	email, _ := payload.Claims["email"].(string)
+	return email, nil
 }
 
 func main() {
@@ -55,35 +67,23 @@ func main() {
 		log.Fatal("JWT_PUBLIC_KEY must hold the platform public key", zap.Error(err))
 	}
 
-	repo := repository.NewPostgresProductRepository(db,
+	repo := repository.NewPostgresStockRepository(db,
 		repository.WithEventRecorder(outbox.NewRecorder()))
-	svc := service.NewProductService(repo)
-	h := handler.NewProductHandler(svc)
+	svc := service.NewStockService(repo)
+	h := handler.NewStockHandler(svc)
 
-	// Relay transport (ADR-002 amendment): Pub/Sub when PUBSUB_TOPIC is
-	// set; a log-only deliverer keeps local development broker-free.
-	var deliverer outbox.Deliverer = outbox.DelivererFunc(
+	relay := outbox.NewRelay(db, outbox.DelivererFunc(
 		func(_ context.Context, env events.Envelope) error {
-			log.Info("event delivered (log transport)",
+			log.Info("event delivered",
 				zap.String("event_id", env.ID),
 				zap.String("type", env.Type),
 				zap.String("tenant_id", env.TenantID))
 			return nil
-		})
-	if topicID := os.Getenv("PUBSUB_TOPIC"); topicID != "" {
-		psClient, err := pubsub.NewClient(context.Background(), pubsub.DetectProjectID)
-		if err != nil {
-			log.Fatal("create pubsub client", zap.Error(err))
-		}
-		defer func() { _ = psClient.Close() }()
-		deliverer = producer.NewPubSubDeliverer(psClient, topicID)
-		log.Info("relay transport: pubsub", zap.String("topic", topicID))
-	}
-	relay := outbox.NewRelay(db, deliverer, outbox.WithLogger(log))
+		}), outbox.WithLogger(log))
 
 	// On Cloud Run the relay must not be a background goroutine (ADR-003);
 	// Cloud Scheduler POSTs /internal/outbox/drain instead. Locally, a
-	// poller keeps `make run-catalog` zero-config.
+	// poller keeps `make run-inventory` zero-config.
 	if env == "local" {
 		relayCtx, stopRelay := context.WithCancel(context.Background())
 		defer stopRelay()
@@ -104,11 +104,17 @@ func main() {
 
 	h.RegisterRoutes(router.Group("/v1", auth.Middleware(verifier)))
 
-	router.POST("/internal/outbox/drain",
+	internal := router.Group("/internal")
+	internal.POST("/outbox/drain",
 		outbox.DrainHandler(relay, os.Getenv("OUTBOX_DRAIN_TOKEN")))
+	// Pub/Sub push: only PUBSUB_PUSH_SA may deliver, proven by a Google
+	// OIDC token with this endpoint as audience. Fails closed when unset.
+	handler.NewPubSubHandler(svc, idtokenValidator{},
+		os.Getenv("PUBSUB_AUDIENCE"), os.Getenv("PUBSUB_PUSH_SA")).
+		RegisterRoutes(internal)
 
 	addr := ":" + envOr("PORT", "8080")
-	log.Info("catalog service listening", zap.String("addr", addr))
+	log.Info("inventory service listening", zap.String("addr", addr))
 	if err := router.Run(addr); err != nil {
 		log.Fatal("server exited", zap.Error(err))
 	}

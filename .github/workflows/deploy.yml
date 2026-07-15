@@ -66,6 +66,16 @@ jobs:
           if [ "${{ inputs.service }}" = "merchants" ]; then
             SECRETS="$SECRETS,JWT_PRIVATE_KEY=jwt-private-key:latest"
           fi
+          ENV_VARS="APP_ENV=production"
+          if [ "${{ inputs.service }}" = "catalog" ]; then
+            # Relay transport: publish outbox envelopes to Pub/Sub (ADR-002).
+            ENV_VARS="$ENV_VARS,PUBSUB_TOPIC=catalog-events"
+          fi
+          if [ "${{ inputs.service }}" = "inventory" ]; then
+            # Pub/Sub push auth: only this SA, with this audience.
+            ENV_VARS="$ENV_VARS,PUBSUB_PUSH_SA=${{ vars.GCP_PUBSUB_PUSH_SA }}"
+            ENV_VARS="$ENV_VARS,PUBSUB_AUDIENCE=https://inventory-bjm36sbwlq-uc.a.run.app/internal/events/pubsub"
+          fi
           gcloud run deploy "${{ inputs.service }}" \
             --project="${{ vars.GCP_PROJECT_ID }}" \
             --region="${{ vars.GCP_REGION }}" \
@@ -74,7 +84,7 @@ jobs:
             --allow-unauthenticated \
             --min-instances=0 \
             --max-instances=3 \
-            --set-env-vars="APP_ENV=production" \
+            --set-env-vars="$ENV_VARS" \
             --set-secrets="$SECRETS"
 
       - name: Report URL

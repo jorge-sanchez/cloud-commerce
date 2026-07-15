@@ -1,4 +1,4 @@
-go 1.25.0
+go 1.25.8
 
 use (
 	./pkg/auth
@@ -10,5 +10,6 @@ use (
 	./pkg/testdb
 	./services/catalog
 	./services/example
+	./services/inventory
 	./services/merchants
 )
