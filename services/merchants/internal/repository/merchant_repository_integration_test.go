@@ -1,7 +1,7 @@
 //go:build integration
 
-// Test Budget: 3 distinct behaviors × 2 = 6 max integration tests
-// Actual: 6
+// Test Budget: 4 distinct behaviors × 2 = 8 max integration tests
+// Actual: 8
 //
 // Behavior 1: SaveNewWithOwner — persists merchant+owner atomically with the
 //
@@ -12,6 +12,11 @@
 // Behavior 3: tenant scoping (ADR-001) — GetMerchantWithUser with another
 //
 //	tenant's user returns ErrNotFound
+//
+// Behavior 4: UpdateStoreProfile — entity-approved profile persists with the
+//
+//	settings event; entity-rejected profile returns ErrValidation and
+//	writes neither
 package repository
 
 import (
@@ -154,4 +159,58 @@ func TestPostgresMerchantRepository_GetMerchantWithUser_OtherTenantsUser_Returns
 	_, _, err := repo.GetMerchantWithUser(context.Background(), merchantB.ID, ownerA.ID)
 
 	require.ErrorIs(t, err, apperrors.ErrNotFound, "another tenant's user must be indistinguishable from a missing one")
+}
+
+// ---------------------------------------------------------------------------
+// Behavior 4: UpdateStoreProfile — the entity decides
+// ---------------------------------------------------------------------------
+
+func TestPostgresMerchantRepository_UpdateStoreProfile_Valid_PersistsSettingsAndEvent(t *testing.T) {
+	db := openMigratedDB(t)
+	repo := NewPostgresMerchantRepository(db, WithEventRecorder(outbox.NewRecorder()))
+	merchant, _ := signUpFixture(t, repo, "Jorge's Store", "owner@store.test")
+
+	updated, err := repo.UpdateStoreProfile(context.Background(), merchant.ID, "Tienda Jorge", domain.StoreSettings{
+		Currency: "PEN", Timezone: "America/Lima", SupportEmail: "help@store.test",
+	})
+
+	require.NoError(t, err)
+	assert.Equal(t, "PEN", updated.Settings.Currency)
+
+	got, err := repo.GetByID(context.Background(), merchant.ID)
+	require.NoError(t, err)
+	assert.Equal(t, "Tienda Jorge", got.Name, "the new profile must be persisted")
+	assert.Equal(t, "America/Lima", got.Settings.Timezone)
+
+	var eventCount int
+	require.NoError(t, db.QueryRow(
+		`SELECT COUNT(*) FROM outbox WHERE tenant_id = $1 AND event_type = $2`,
+		merchant.ID, domain.MerchantSettingsUpdatedEventType,
+	).Scan(&eventCount))
+	assert.Equal(t, 1, eventCount, "the settings event must be recorded with the update")
+}
+
+func TestPostgresMerchantRepository_UpdateStoreProfile_EntityRejects_ReturnsValidationAndWritesNothing(t *testing.T) {
+	db := openMigratedDB(t)
+	repo := NewPostgresMerchantRepository(db, WithEventRecorder(outbox.NewRecorder()))
+	merchant, _ := signUpFixture(t, repo, "Jorge's Store", "owner@store.test")
+
+	_, err := repo.UpdateStoreProfile(context.Background(), merchant.ID, "Jorge's Store", domain.StoreSettings{
+		Currency: "pen", Timezone: "UTC",
+	})
+
+	var appErr *apperrors.AppError
+	require.ErrorAs(t, err, &appErr)
+	assert.Equal(t, "VALIDATION_ERROR", appErr.Code)
+
+	got, err := repo.GetByID(context.Background(), merchant.ID)
+	require.NoError(t, err)
+	assert.Equal(t, "USD", got.Settings.Currency, "the rejected profile must not change the row")
+
+	var eventCount int
+	require.NoError(t, db.QueryRow(
+		`SELECT COUNT(*) FROM outbox WHERE event_type = $1`,
+		domain.MerchantSettingsUpdatedEventType,
+	).Scan(&eventCount))
+	assert.Equal(t, 0, eventCount, "the rejected profile must not record an event")
 }
