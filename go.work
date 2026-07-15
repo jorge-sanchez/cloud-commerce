@@ -16,4 +16,5 @@ use (
 	./services/merchants
 	./services/notifications
 	./services/orders
+	./services/storefront
 )

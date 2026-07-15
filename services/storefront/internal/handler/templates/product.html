@@ -1,0 +1,20 @@
+{{template "head" .}}
+<h1>{{.Product.Title}}</h1>
+<p>{{.Product.Description}}</p>
+<label>Option:
+  <select id="variant">
+    {{range .Product.Variants}}<option value="{{.ID}}">{{range $i, $v := .OptionValues}}{{if $i}} / {{end}}{{$v}}{{end}} — {{money .PriceCents $.Store.Currency}} ({{.SKU}})</option>{{end}}
+  </select>
+</label>
+<div><button onclick="addToCart()">Add to cart</button> <span id="msg" class="muted"></span></div>
+<script>
+async function addToCart() {
+  try {
+    const id = await ensureCart();
+    await api("/v1/public/carts/" + id + "/items", {method: "POST", body: JSON.stringify({variant_id: document.getElementById("variant").value, qty: 1})});
+    document.getElementById("msg").textContent = "Added! ";
+    location.href = "/" + STORE_HANDLE + "/cart";
+  } catch (e) { document.getElementById("msg").textContent = e.message; }
+}
+</script>
+{{template "foot" .}}

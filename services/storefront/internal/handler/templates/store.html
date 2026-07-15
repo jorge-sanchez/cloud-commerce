@@ -1,0 +1,11 @@
+{{template "head" .}}
+<h1>{{.Store.Name}}</h1>
+<div class="grid">
+  {{range .Products}}
+  <div class="card">
+    <a href="/{{$.Store.Handle}}/p/{{.ID}}">{{.Title}}</a>
+    {{with index .Variants 0}}<div class="price">{{money .PriceCents $.Store.Currency}}</div>{{end}}
+  </div>
+  {{else}}<p class="muted">No products yet.</p>{{end}}
+</div>
+{{template "foot" .}}

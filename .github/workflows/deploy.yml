@@ -49,7 +49,7 @@ jobs:
         # DATABASE_URL lives in Secret Manager as <service>-database-url;
         # the deployer SA reads it here so the URL never touches GitHub.
         # Services without migrations (admin: static SPA host) skip this.
-        if: ${{ inputs.service != 'admin' }}
+        if: ${{ inputs.service != 'admin' && inputs.service != 'storefront' }}
         run: |
           DATABASE_URL=$(gcloud secrets versions access latest \
             --secret="${{ inputs.service }}-database-url" \
@@ -64,7 +64,13 @@ jobs:
           # identity issuer (ADR-006) — receives the private key. The admin
           # SPA host has no database and no secrets at all.
           SECRET_FLAG=""
-          if [ "${{ inputs.service }}" != "admin" ]; then
+          if [ "${{ inputs.service }}" = "storefront" ]; then
+            ENV_VARS="$ENV_VARS,MERCHANTS_URL=https://merchants-bjm36sbwlq-uc.a.run.app"
+            ENV_VARS="$ENV_VARS,CATALOG_URL=https://catalog-bjm36sbwlq-uc.a.run.app"
+            ENV_VARS="$ENV_VARS,ORDERS_URL=https://orders-bjm36sbwlq-uc.a.run.app"
+            ENV_VARS="$ENV_VARS,STRIPE_PUBLISHABLE_KEY=${{ vars.STRIPE_PUBLISHABLE_KEY }}"
+          fi
+          if [ "${{ inputs.service }}" != "admin" ] && [ "${{ inputs.service }}" != "storefront" ]; then
             SECRETS="DATABASE_URL=${{ inputs.service }}-database-url:latest"
             SECRETS="$SECRETS,OUTBOX_DRAIN_TOKEN=${{ inputs.service }}-drain-token:latest"
             SECRETS="$SECRETS,JWT_PUBLIC_KEY=jwt-public-key:latest"
