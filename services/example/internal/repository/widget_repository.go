@@ -14,7 +14,7 @@ import (
 )
 
 // EventRecorder writes an event envelope inside the caller's transaction —
-// the transactional-outbox port (ADR-002). Implemented by producer.OutboxRecorder.
+// the transactional-outbox port (ADR-002). Implemented by outbox.Recorder.
 type EventRecorder interface {
 	Record(ctx context.Context, tx *sql.Tx, env events.Envelope) error
 }

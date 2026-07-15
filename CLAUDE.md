@@ -18,7 +18,7 @@ services/<name>/
     ├── service/      # application services (orchestration only)
     ├── repository/   # persistence adapters (PostgreSQL, Redis)
     ├── handler/      # HTTP handlers (Gin)
-    └── producer/     # event-publishing port adapters
+    └── producer/     # service-specific event deliverers (generic outbox machinery lives in pkg/outbox)
 ```
 
 `internal/` packages are truly internal — never import across service boundaries. Cross-service contracts go through shared `pkg/` packages or an explicit RPC layer.
@@ -118,6 +118,22 @@ type PostgresWidgetRepository struct {
     events EventRecorder // may be nil
 }
 ```
+
+---
+
+## Identity and tenancy (ADR-006)
+
+The merchants service is the only identity issuer: it holds the JWT private key and mints Ed25519-signed tokens carrying `tenant_id`. Every other service verifies with the public key via `pkg/auth`:
+
+```go
+// main.go — all tenant-scoped routes go behind the middleware
+h.RegisterRoutes(router.Group("/v1", auth.Middleware(verifier)))
+
+// handlers — the tenant comes from verified claims, never from a header
+tenantID := auth.TenantID(c)
+```
+
+Never read tenant identity from request headers or bodies. Local development mints tokens with a keypair from `go run ./cmd/genkey` (in `pkg/auth`).
 
 ---
 
@@ -263,7 +279,7 @@ assert.Equal(t, "widget-001", w.ID)
 
 Domain events are defined in the domain package alongside the aggregate, wrapped in the shared envelope from `pkg/events`, and persisted through the transactional outbox (ADR-002) — never published directly from the request path.
 
-The repository records the envelope in the **same transaction** as the state change it describes, via the `EventRecorder` port implemented by `producer.OutboxRecorder`:
+The repository records the envelope in the **same transaction** as the state change it describes, via the `EventRecorder` port implemented by `outbox.Recorder` (shared module `pkg/outbox`):
 
 ```go
 // inside PublishIfPublishable, before tx.Commit()
@@ -279,7 +295,7 @@ if r.events != nil {
 }
 ```
 
-`producer.Relay` drains undelivered rows in insertion order and owns delivery retries — delivery failures never reach the request path. Delivery is at-least-once, so consumers must be idempotent (dedupe on envelope ID).
+`outbox.Relay` drains undelivered rows in insertion order and owns delivery retries — delivery failures never reach the request path. Delivery is at-least-once, so consumers must be idempotent (dedupe on envelope ID). Every service exposes the drain endpoint via `outbox.DrainHandler` (Cloud Scheduler invokes it on Cloud Run, ADR-003).
 
 Build event payloads from the persisted domain object (what the entity decided), not from the raw request.
 
@@ -324,5 +340,6 @@ Types: `feat`, `fix`, `refactor`, `test`, `docs`, `chore`. Scope is the service 
 - Do not write a repository without a cross-tenant negative integration test (ADR-001).
 - Do not serve 200/201 bodies as `gin.H` — named structs in `apitypes.go`; the ratchet check will fail the PR.
 - Do not share `internal/` packages across service boundaries.
+- Do not read tenant identity from headers or request bodies — only from `auth.TenantID(c)` behind `auth.Middleware` (ADR-006).
 - Do not start raw Postgres testcontainers — use `pkg/testdb.Open(t)`.
 - Do not close issues manually — include `Closes #N` in the PR description.

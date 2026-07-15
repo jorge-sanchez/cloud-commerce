@@ -58,6 +58,14 @@ jobs:
 
       - name: Deploy to Cloud Run
         run: |
+          # Every service verifies platform tokens; only merchants — the
+          # identity issuer (ADR-006) — receives the private key.
+          SECRETS="DATABASE_URL=${{ inputs.service }}-database-url:latest"
+          SECRETS="$SECRETS,OUTBOX_DRAIN_TOKEN=${{ inputs.service }}-drain-token:latest"
+          SECRETS="$SECRETS,JWT_PUBLIC_KEY=jwt-public-key:latest"
+          if [ "${{ inputs.service }}" = "merchants" ]; then
+            SECRETS="$SECRETS,JWT_PRIVATE_KEY=jwt-private-key:latest"
+          fi
           gcloud run deploy "${{ inputs.service }}" \
             --project="${{ vars.GCP_PROJECT_ID }}" \
             --region="${{ vars.GCP_REGION }}" \
@@ -67,7 +75,7 @@ jobs:
             --min-instances=0 \
             --max-instances=3 \
             --set-env-vars="APP_ENV=production" \
-            --set-secrets="DATABASE_URL=${{ inputs.service }}-database-url:latest,OUTBOX_DRAIN_TOKEN=${{ inputs.service }}-drain-token:latest"
+            --set-secrets="$SECRETS"
 
       - name: Report URL
         run: |

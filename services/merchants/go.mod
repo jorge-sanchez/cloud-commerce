@@ -1,19 +1,20 @@
-module github.com/jorge-sanchez/cloud-commerce/services/example
+module github.com/jorge-sanchez/cloud-commerce/services/merchants
 
 go 1.25.0
 
 require (
 	github.com/gin-gonic/gin v1.12.0
+	github.com/jorge-sanchez/cloud-commerce/pkg/auth v0.0.0
 	github.com/jorge-sanchez/cloud-commerce/pkg/errors v0.0.0
+	github.com/jorge-sanchez/cloud-commerce/pkg/events v0.0.0
 	github.com/jorge-sanchez/cloud-commerce/pkg/logger v0.0.0
-	github.com/jorge-sanchez/cloud-commerce/pkg/pagination v0.0.0
+	github.com/jorge-sanchez/cloud-commerce/pkg/outbox v0.0.0
 	github.com/jorge-sanchez/cloud-commerce/pkg/testdb v0.0.0
 	github.com/lib/pq v1.12.3
 	github.com/stretchr/testify v1.11.1
 	go.uber.org/zap v1.28.0
+	golang.org/x/crypto v0.52.0
 )
-
-require github.com/golang-jwt/jwt/v5 v5.3.1 // indirect
 
 require (
 	dario.cat/mergo v1.0.2 // indirect
@@ -46,14 +47,12 @@ require (
 	github.com/go-playground/validator/v10 v10.30.2 // indirect
 	github.com/goccy/go-json v0.10.6 // indirect
 	github.com/goccy/go-yaml v1.19.2 // indirect
+	github.com/golang-jwt/jwt/v5 v5.3.1 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/jackc/pgpassfile v1.0.0 // indirect
 	github.com/jackc/pgservicefile v0.0.0-20240606120523-5a60cdf6a761 // indirect
 	github.com/jackc/pgx/v5 v5.10.0 // indirect
 	github.com/jackc/puddle/v2 v2.2.2 // indirect
-	github.com/jorge-sanchez/cloud-commerce/pkg/auth v0.0.0
-	github.com/jorge-sanchez/cloud-commerce/pkg/events v0.0.0
-	github.com/jorge-sanchez/cloud-commerce/pkg/outbox v0.0.0
 	github.com/json-iterator/go v1.1.12 // indirect
 	github.com/klauspost/compress v1.18.5 // indirect
 	github.com/klauspost/cpuid/v2 v2.3.0 // indirect
@@ -96,7 +95,6 @@ require (
 	go.opentelemetry.io/otel/trace v1.41.0 // indirect
 	go.uber.org/multierr v1.10.0 // indirect
 	golang.org/x/arch v0.27.0 // indirect
-	golang.org/x/crypto v0.52.0 // indirect
 	golang.org/x/net v0.55.0 // indirect
 	golang.org/x/sync v0.20.0 // indirect
 	golang.org/x/sys v0.45.0 // indirect
@@ -105,15 +103,14 @@ require (
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
 
-replace (
-	github.com/jorge-sanchez/cloud-commerce/pkg/errors => ../../pkg/errors
-	github.com/jorge-sanchez/cloud-commerce/pkg/logger => ../../pkg/logger
-	github.com/jorge-sanchez/cloud-commerce/pkg/pagination => ../../pkg/pagination
-	github.com/jorge-sanchez/cloud-commerce/pkg/testdb => ../../pkg/testdb
-)
+replace github.com/jorge-sanchez/cloud-commerce/pkg/auth => ../../pkg/auth
+
+replace github.com/jorge-sanchez/cloud-commerce/pkg/errors => ../../pkg/errors
 
 replace github.com/jorge-sanchez/cloud-commerce/pkg/events => ../../pkg/events
 
+replace github.com/jorge-sanchez/cloud-commerce/pkg/logger => ../../pkg/logger
+
 replace github.com/jorge-sanchez/cloud-commerce/pkg/outbox => ../../pkg/outbox
 
-replace github.com/jorge-sanchez/cloud-commerce/pkg/auth => ../../pkg/auth
+replace github.com/jorge-sanchez/cloud-commerce/pkg/testdb => ../../pkg/testdb

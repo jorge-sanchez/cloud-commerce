@@ -1,10 +1,13 @@
 go 1.25.0
 
 use (
+	./pkg/auth
 	./pkg/errors
 	./pkg/events
 	./pkg/logger
+	./pkg/outbox
 	./pkg/pagination
 	./pkg/testdb
 	./services/example
+	./services/merchants
 )

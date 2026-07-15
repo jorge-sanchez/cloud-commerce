@@ -8,6 +8,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"github.com/jorge-sanchez/cloud-commerce/pkg/auth"
 	apperrors "github.com/jorge-sanchez/cloud-commerce/pkg/errors"
 	"github.com/jorge-sanchez/cloud-commerce/pkg/pagination"
 	"github.com/jorge-sanchez/cloud-commerce/services/example/internal/domain"
@@ -32,10 +33,10 @@ func (h *WidgetHandler) RegisterRoutes(rg *gin.RouterGroup) {
 	rg.POST("/widgets/:id/publish", h.Publish)
 }
 
-// tenantID extracts the tenant from the request. The template trusts the
-// X-Tenant-ID header — replace this with your real auth middleware.
+// tenantID reads the verified tenant injected by auth.Middleware (ADR-006).
+// Routes must be mounted behind the middleware — see cmd/main.go.
 func tenantID(c *gin.Context) string {
-	return c.GetHeader("X-Tenant-ID")
+	return auth.TenantID(c)
 }
 
 type createWidgetRequest struct {

@@ -1,9 +1,9 @@
-// Package producer holds the event-publishing adapters (ADR-002): the
-// OutboxRecorder writes envelopes to the outbox table inside the caller's
-// transaction, and the Relay drains undelivered rows and owns delivery
-// retries. Domain and service code never see either — repositories record,
-// the relay delivers.
-package producer
+// Package outbox is the shared transactional-outbox machinery (ADR-002):
+// the Recorder writes event envelopes inside the caller's transaction, and
+// the Relay drains undelivered rows and owns delivery retries. Every service
+// wires both against its own `outbox` table (see the template migration in
+// services/example/migrations).
+package outbox
 
 import (
 	"context"
@@ -13,20 +13,20 @@ import (
 	"github.com/jorge-sanchez/cloud-commerce/pkg/events"
 )
 
-// OutboxRecorder writes event envelopes to the outbox table. Record must be
+// Recorder writes event envelopes to the outbox table. Record must be
 // called with the same transaction that persists the state change the event
 // describes — that atomicity is the entire point of the outbox.
-type OutboxRecorder struct{}
+type Recorder struct{}
 
-// NewOutboxRecorder constructs the recorder. It is stateless: the transaction
+// NewRecorder constructs the recorder. It is stateless: the transaction
 // arrives with every Record call.
-func NewOutboxRecorder() *OutboxRecorder {
-	return &OutboxRecorder{}
+func NewRecorder() *Recorder {
+	return &Recorder{}
 }
 
 // Record inserts the envelope into the outbox inside tx. The database assigns
 // the envelope ID and insertion position.
-func (r *OutboxRecorder) Record(ctx context.Context, tx *sql.Tx, env events.Envelope) error {
+func (r *Recorder) Record(ctx context.Context, tx *sql.Tx, env events.Envelope) error {
 	_, err := tx.ExecContext(ctx, `
 		INSERT INTO outbox (tenant_id, aggregate_id, event_type, occurred_at, payload)
 		VALUES ($1, $2, $3, $4, $5)`,

@@ -27,7 +27,7 @@ import (
 	apperrors "github.com/jorge-sanchez/cloud-commerce/pkg/errors"
 	"github.com/jorge-sanchez/cloud-commerce/pkg/events"
 	"github.com/jorge-sanchez/cloud-commerce/services/example/internal/domain"
-	"github.com/jorge-sanchez/cloud-commerce/services/example/internal/producer"
+	"github.com/jorge-sanchez/cloud-commerce/pkg/outbox"
 )
 
 // fakeDeliverer records delivered envelopes and can be told to fail.
@@ -36,7 +36,7 @@ type fakeDeliverer struct {
 	delivered []events.Envelope
 }
 
-var _ producer.Deliverer = (*fakeDeliverer)(nil)
+var _ outbox.Deliverer = (*fakeDeliverer)(nil)
 
 func (f *fakeDeliverer) Deliver(_ context.Context, env events.Envelope) error {
 	if f.err != nil {
@@ -52,7 +52,7 @@ func (f *fakeDeliverer) Deliver(_ context.Context, env events.Envelope) error {
 
 func TestPostgresWidgetRepository_PublishIfPublishable_WithRecorder_WritesOutboxRowAtomically(t *testing.T) {
 	db := openMigratedDB(t)
-	repo := NewPostgresWidgetRepository(db, WithEventRecorder(producer.NewOutboxRecorder()))
+	repo := NewPostgresWidgetRepository(db, WithEventRecorder(outbox.NewRecorder()))
 	ctx := context.Background()
 
 	saved, err := repo.SaveNew(ctx, tenantA, domain.NewWidget(tenantA, "hero banner"))
@@ -76,7 +76,7 @@ func TestPostgresWidgetRepository_PublishIfPublishable_WithRecorder_WritesOutbox
 
 func TestPostgresWidgetRepository_PublishIfPublishable_RejectedTransition_WritesNoOutboxRow(t *testing.T) {
 	db := openMigratedDB(t)
-	repo := NewPostgresWidgetRepository(db, WithEventRecorder(producer.NewOutboxRecorder()))
+	repo := NewPostgresWidgetRepository(db, WithEventRecorder(outbox.NewRecorder()))
 	ctx := context.Background()
 
 	saved, err := repo.SaveNew(ctx, tenantA, domain.NewWidget(tenantA, "hero banner"))
@@ -98,7 +98,7 @@ func TestPostgresWidgetRepository_PublishIfPublishable_RejectedTransition_Writes
 
 func TestRelay_DrainOnce_UndeliveredRows_DeliversInOrderAndMarks(t *testing.T) {
 	db := openMigratedDB(t)
-	repo := NewPostgresWidgetRepository(db, WithEventRecorder(producer.NewOutboxRecorder()))
+	repo := NewPostgresWidgetRepository(db, WithEventRecorder(outbox.NewRecorder()))
 	ctx := context.Background()
 
 	for _, name := range []string{"first", "second"} {
@@ -109,7 +109,7 @@ func TestRelay_DrainOnce_UndeliveredRows_DeliversInOrderAndMarks(t *testing.T) {
 	}
 
 	sink := &fakeDeliverer{}
-	relay := producer.NewRelay(db, sink)
+	relay := outbox.NewRelay(db, sink)
 
 	delivered, err := relay.DrainOnce(ctx)
 	require.NoError(t, err)
@@ -124,7 +124,7 @@ func TestRelay_DrainOnce_UndeliveredRows_DeliversInOrderAndMarks(t *testing.T) {
 
 func TestRelay_DrainOnce_DeliveryFails_LeavesRowUndeliveredForRetry(t *testing.T) {
 	db := openMigratedDB(t)
-	repo := NewPostgresWidgetRepository(db, WithEventRecorder(producer.NewOutboxRecorder()))
+	repo := NewPostgresWidgetRepository(db, WithEventRecorder(outbox.NewRecorder()))
 	ctx := context.Background()
 
 	saved, err := repo.SaveNew(ctx, tenantA, domain.NewWidget(tenantA, "hero banner"))
@@ -133,14 +133,14 @@ func TestRelay_DrainOnce_DeliveryFails_LeavesRowUndeliveredForRetry(t *testing.T
 	require.NoError(t, err)
 
 	failing := &fakeDeliverer{err: errors.New("transport down")}
-	relay := producer.NewRelay(db, failing)
+	relay := outbox.NewRelay(db, failing)
 
 	delivered, err := relay.DrainOnce(ctx)
 	require.Error(t, err)
 	assert.Equal(t, 0, delivered)
 
 	sink := &fakeDeliverer{}
-	delivered, err = producer.NewRelay(db, sink).DrainOnce(ctx)
+	delivered, err = outbox.NewRelay(db, sink).DrainOnce(ctx)
 	require.NoError(t, err)
 	assert.Equal(t, 1, delivered, "the failed envelope must be redelivered on the next pass")
 }

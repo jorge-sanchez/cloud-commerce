@@ -25,8 +25,3 @@ type ListWidgetsResponse struct {
 	Page     int              `json:"page"`
 	PageSize int              `json:"page_size"`
 }
-
-// DrainOutboxResponse reports one outbox drain pass (internal endpoint).
-type DrainOutboxResponse struct {
-	Delivered int `json:"delivered"`
-}

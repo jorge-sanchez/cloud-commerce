@@ -1,4 +1,4 @@
-package producer
+package outbox
 
 import (
 	"context"
@@ -37,26 +37,26 @@ type Relay struct {
 	log       *zap.Logger // may be nop
 }
 
-// RelayOption configures optional relay behavior.
-type RelayOption func(*Relay)
+// Option configures optional relay behavior.
+type Option func(*Relay)
 
 // WithPollInterval overrides how often the relay scans for undelivered rows.
-func WithPollInterval(d time.Duration) RelayOption {
+func WithPollInterval(d time.Duration) Option {
 	return func(r *Relay) { r.interval = d }
 }
 
 // WithBatchSize overrides how many rows one drain pass claims.
-func WithBatchSize(n int) RelayOption {
+func WithBatchSize(n int) Option {
 	return func(r *Relay) { r.batchSize = n }
 }
 
 // WithLogger wires a logger for per-pass delivery errors.
-func WithLogger(log *zap.Logger) RelayOption {
+func WithLogger(log *zap.Logger) Option {
 	return func(r *Relay) { r.log = log }
 }
 
 // NewRelay constructs a relay draining db through deliverer.
-func NewRelay(db *sql.DB, deliverer Deliverer, opts ...RelayOption) *Relay {
+func NewRelay(db *sql.DB, deliverer Deliverer, opts ...Option) *Relay {
 	r := &Relay{
 		db:        db,
 		deliverer: deliverer,

@@ -1,14 +1,14 @@
 // Test Budget: 2 distinct behaviors × 2 = 4 max unit tests
 // Actual: 4
 //
-// Behavior 1: Drain — authorized request drains once and reports the count;
+// Behavior 1: DrainHandler — authorized request drains once and reports the
 //
-//	drain failures surface as errors
+//	count; drain failures surface as errors
 //
-// Behavior 2: Drain — missing or wrong bearer token is rejected before the
+// Behavior 2: DrainHandler — missing or wrong bearer token is rejected
 //
-//	drainer is touched
-package handler
+//	before the drainer is touched; empty configured token fails closed
+package outbox_test
 
 import (
 	"context"
@@ -22,9 +22,10 @@ import (
 	"github.com/stretchr/testify/require"
 
 	apperrors "github.com/jorge-sanchez/cloud-commerce/pkg/errors"
+	"github.com/jorge-sanchez/cloud-commerce/pkg/outbox"
 )
 
-var _ OutboxDrainer = (*fakeDrainer)(nil)
+var _ outbox.Drainer = (*fakeDrainer)(nil)
 
 type fakeDrainer struct {
 	delivered int
@@ -37,11 +38,11 @@ func (f *fakeDrainer) DrainOnce(_ context.Context) (int, error) {
 	return f.delivered, f.err
 }
 
-func drainRequest(t *testing.T, drainer OutboxDrainer, token, header string) *httptest.ResponseRecorder {
+func drainRequest(t *testing.T, drainer outbox.Drainer, token, header string) *httptest.ResponseRecorder {
 	t.Helper()
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
-	NewOutboxHandler(drainer, token).RegisterRoutes(router.Group("/internal"))
+	router.POST("/internal/outbox/drain", outbox.DrainHandler(drainer, token))
 
 	req := httptest.NewRequest(http.MethodPost, "/internal/outbox/drain", nil)
 	if header != "" {
@@ -56,19 +57,19 @@ func drainRequest(t *testing.T, drainer OutboxDrainer, token, header string) *ht
 // Behavior 1: authorized drain
 // ---------------------------------------------------------------------------
 
-func TestOutboxHandler_Drain_ValidToken_ReturnsDeliveredCount(t *testing.T) {
+func TestDrainHandler_ValidToken_ReturnsDeliveredCount(t *testing.T) {
 	drainer := &fakeDrainer{delivered: 3}
 
 	rec := drainRequest(t, drainer, "secret", "Bearer secret")
 
 	require.Equal(t, http.StatusOK, rec.Code)
-	var resp DrainOutboxResponse
+	var resp outbox.DrainResponse
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
 	assert.Equal(t, 3, resp.Delivered)
 	assert.Equal(t, 1, drainer.calls)
 }
 
-func TestOutboxHandler_Drain_DrainerFails_RespondsWithError(t *testing.T) {
+func TestDrainHandler_DrainerFails_RespondsWithError(t *testing.T) {
 	drainer := &fakeDrainer{err: apperrors.ErrInternal}
 
 	rec := drainRequest(t, drainer, "secret", "Bearer secret")
@@ -80,7 +81,7 @@ func TestOutboxHandler_Drain_DrainerFails_RespondsWithError(t *testing.T) {
 // Behavior 2: token is required
 // ---------------------------------------------------------------------------
 
-func TestOutboxHandler_Drain_WrongToken_RejectsWithoutDraining(t *testing.T) {
+func TestDrainHandler_WrongToken_RejectsWithoutDraining(t *testing.T) {
 	drainer := &fakeDrainer{}
 
 	rec := drainRequest(t, drainer, "secret", "Bearer wrong")
@@ -89,7 +90,7 @@ func TestOutboxHandler_Drain_WrongToken_RejectsWithoutDraining(t *testing.T) {
 	assert.Equal(t, 0, drainer.calls, "the drainer must not run for unauthorized requests")
 }
 
-func TestOutboxHandler_Drain_EmptyConfiguredToken_RejectsEverything(t *testing.T) {
+func TestDrainHandler_EmptyConfiguredToken_RejectsEverything(t *testing.T) {
 	drainer := &fakeDrainer{}
 
 	rec := drainRequest(t, drainer, "", "Bearer ")
