@@ -72,3 +72,6 @@ build: ## Build all Go modules
 			(cd "$$dir" && go build ./...); \
 		fi; \
 	done
+
+types: ## Regenerate TypeScript types from Go wire structs (tygo)
+	go run github.com/gzuidhof/tygo@v0.2.18 generate

@@ -9,6 +9,7 @@ use (
 	./pkg/outbox
 	./pkg/pagination
 	./pkg/testdb
+	./services/admin
 	./services/catalog
 	./services/example
 	./services/inventory

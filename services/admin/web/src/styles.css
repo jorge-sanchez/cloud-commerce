@@ -1,0 +1,176 @@
+:root {
+  font-family: system-ui, -apple-system, sans-serif;
+  color: #1a1a2e;
+  background: #f4f5f7;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+}
+
+.layout {
+  display: grid;
+  grid-template-columns: 220px 1fr;
+  min-height: 100vh;
+}
+
+.sidebar {
+  background: #1a1a2e;
+  color: #fff;
+  padding: 1.5rem 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.sidebar h1 {
+  font-size: 1.1rem;
+  margin: 0 0 1rem;
+}
+
+.sidebar a {
+  color: #c7c9d9;
+  text-decoration: none;
+  padding: 0.5rem 0.75rem;
+  border-radius: 6px;
+}
+
+.sidebar a.active {
+  background: #2e2e4e;
+  color: #fff;
+}
+
+main {
+  padding: 2rem;
+  max-width: 900px;
+}
+
+.card {
+  background: #fff;
+  border: 1px solid #e2e4ea;
+  border-radius: 8px;
+  padding: 1.25rem;
+  margin: 1rem 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+table.card {
+  display: table;
+  width: 100%;
+  border-collapse: collapse;
+}
+
+th,
+td {
+  text-align: left;
+  padding: 0.6rem 0.75rem;
+  border-bottom: 1px solid #eef0f4;
+}
+
+label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: 0.9rem;
+  font-weight: 500;
+}
+
+input {
+  padding: 0.55rem 0.7rem;
+  border: 1px solid #cfd3dd;
+  border-radius: 6px;
+  font-size: 0.95rem;
+}
+
+button {
+  padding: 0.55rem 1rem;
+  border: none;
+  border-radius: 6px;
+  background: #1a1a2e;
+  color: #fff;
+  font-size: 0.95rem;
+  cursor: pointer;
+  align-self: flex-start;
+}
+
+button.danger {
+  background: #b3261e;
+}
+
+button.linklike {
+  background: none;
+  color: #4a4de7;
+  padding: 0.25rem 0;
+}
+
+.login {
+  display: grid;
+  place-items: center;
+  min-height: 100vh;
+}
+
+.login .card {
+  width: 340px;
+}
+
+.tabs {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.tabs button {
+  flex: 1;
+  background: #eef0f4;
+  color: #1a1a2e;
+}
+
+.tabs button.active {
+  background: #1a1a2e;
+  color: #fff;
+}
+
+.error {
+  color: #b3261e;
+  margin: 0;
+}
+
+.ok {
+  color: #1a7f37;
+  margin: 0;
+}
+
+.hint {
+  color: #666;
+  font-size: 0.85rem;
+}
+
+.badge {
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+  font-size: 0.8rem;
+}
+
+.badge.draft {
+  background: #fff3cd;
+}
+
+.badge.active {
+  background: #d1e7dd;
+}
+
+.variant-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr 100px;
+  gap: 0.5rem;
+}
+
+.adjust button {
+  margin-right: 0.3rem;
+  padding: 0.3rem 0.6rem;
+}

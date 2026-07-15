@@ -28,3 +28,8 @@ tfplan
 .DS_Store
 .idea/
 .vscode/
+
+# Frontend build artifacts
+node_modules/
+services/admin/web/dist/
+!services/admin/internal/web/dist/index.html
