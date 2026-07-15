@@ -1,5 +1,5 @@
-// Test Budget: 4 distinct behaviors × 2 = 8 max unit tests
-// Actual: 7
+// Test Budget: 5 distinct behaviors × 2 = 10 max unit tests
+// Actual: 8
 //
 // Behavior 1: ProcessEvent(product_created) — ensures the default location
 //
@@ -10,6 +10,10 @@
 // Behavior 4: CreateLocation — entity-rejected name is a validation error
 //
 //	with no write
+//
+// Behavior 5: ProcessEvent(order_paid) — deductions reach the repository
+//
+//	deduped by envelope ID
 package service
 
 import (
@@ -33,6 +37,9 @@ import (
 var _ domain.StockRepository = (*fakeStockRepo)(nil)
 
 type fakeStockRepo struct {
+	deducted       []domain.StockDeduction
+	deductTenant   string
+	deductEventID  string
 	initialized    []domain.StockInit
 	initTenant     string
 	initLocation   string
@@ -72,6 +79,13 @@ func (f *fakeStockRepo) ListStockByTenant(_ context.Context, _ string, _, _ int)
 
 func (f *fakeStockRepo) AdjustIfSufficient(_ context.Context, _, _, _ string, _ int64) (*domain.StockLevel, error) {
 	return nil, f.err
+}
+
+func (f *fakeStockRepo) ApplyStockDeduction(_ context.Context, tenantID, eventID string, items []domain.StockDeduction) error {
+	f.deductTenant = tenantID
+	f.deductEventID = eventID
+	f.deducted = append(f.deducted, items...)
+	return f.err
 }
 
 func productCreatedEnvelope(t *testing.T) events.Envelope {
@@ -179,4 +193,27 @@ func TestStockService_CreateLocation_EmptyName_ReturnsValidationErrorAndNoWrite(
 	require.ErrorAs(t, err, &appErr)
 	assert.Equal(t, "VALIDATION_ERROR", appErr.Code)
 	require.Len(t, repo.savedLocations, 0, "no location may be written on validation failure")
+}
+
+// ---------------------------------------------------------------------------
+// Behavior 5: order_paid deducts stock deduped by envelope ID
+// ---------------------------------------------------------------------------
+
+func TestStockService_ProcessEvent_OrderPaid_DeductsDedupedByEnvelopeID(t *testing.T) {
+	repo := &fakeStockRepo{}
+	svc := NewStockService(repo)
+	payload := map[string]any{
+		"order_id": "order-001",
+		"items":    []map[string]any{{"variant_id": "var-001", "qty": 2}},
+	}
+	env, err := events.New("tenant-001", "order-001", OrdersOrderPaidType, time.Now(), payload)
+	require.NoError(t, err)
+	env.ID = "envelope-001"
+
+	require.NoError(t, svc.ProcessEvent(context.Background(), env))
+
+	assert.Equal(t, "tenant-001", repo.deductTenant)
+	assert.Equal(t, "envelope-001", repo.deductEventID, "dedupe must key on the envelope ID")
+	require.Len(t, repo.deducted, 1, "one deduction per order line")
+	assert.Equal(t, int64(2), repo.deducted[0].Qty)
 }

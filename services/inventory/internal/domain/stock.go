@@ -66,6 +66,19 @@ func (s *StockLevel) Adjust(delta int64) error {
 	return nil
 }
 
+// DeductClamped removes qty but never goes below zero (paid orders must
+// apply even when stock drifted — an oversell is reported, not refused).
+// It returns the shortfall (0 when stock covered the deduction).
+func (s *StockLevel) DeductClamped(qty int64) int64 {
+	if qty >= s.OnHand {
+		short := qty - s.OnHand
+		s.OnHand = 0
+		return short
+	}
+	s.OnHand -= qty
+	return 0
+}
+
 // StockAdjustedEventType is the envelope type for StockAdjustedEvent.
 const StockAdjustedEventType = "inventory.stock_adjusted"
 
@@ -97,6 +110,12 @@ type StockInit struct {
 	SKU       string
 }
 
+// StockDeduction is one order line to remove from stock.
+type StockDeduction struct {
+	VariantID string
+	Qty       int64
+}
+
 // StockRepository is the persistence port for inventory.
 type StockRepository interface {
 	// EnsureDefaultLocation returns the tenant's default location, creating
@@ -116,4 +135,9 @@ type StockRepository interface {
 	// delta, and persists the result. Returns apperrors.ErrConflict when
 	// the entity rejects the adjustment.
 	AdjustIfSufficient(ctx context.Context, tenantID, locationID, variantID string, delta int64) (*StockLevel, error)
+	// ApplyStockDeduction removes order quantities at the default location
+	// in one transaction, deduped by event ID: replays are no-ops
+	// (order_paid is delivered at-least-once). Missing rows are skipped;
+	// insufficiency clamps at zero (the entity decides the clamp).
+	ApplyStockDeduction(ctx context.Context, tenantID, eventID string, items []StockDeduction) error
 }

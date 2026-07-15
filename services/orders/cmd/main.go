@@ -11,6 +11,7 @@ import (
 	"os"
 	"strings"
 
+	"cloud.google.com/go/pubsub/v2"
 	"github.com/gin-gonic/gin"
 	_ "github.com/lib/pq"
 
@@ -24,6 +25,7 @@ import (
 	"github.com/jorge-sanchez/cloud-commerce/pkg/outbox"
 	"github.com/jorge-sanchez/cloud-commerce/services/orders/internal/gateway"
 	"github.com/jorge-sanchez/cloud-commerce/services/orders/internal/handler"
+	"github.com/jorge-sanchez/cloud-commerce/services/orders/internal/producer"
 	"github.com/jorge-sanchez/cloud-commerce/services/orders/internal/repository"
 	"github.com/jorge-sanchez/cloud-commerce/services/orders/internal/service"
 )
@@ -75,14 +77,26 @@ func main() {
 	payments := service.NewPaymentService(repo, gw)
 	h := handler.NewOrderHandler(svc, payments)
 
-	relay := outbox.NewRelay(db, outbox.DelivererFunc(
+	// Relay transport (ADR-002 amendment): Pub/Sub when PUBSUB_TOPIC is
+	// set; a log-only deliverer keeps local development broker-free.
+	var deliverer outbox.Deliverer = outbox.DelivererFunc(
 		func(_ context.Context, env events.Envelope) error {
 			log.Info("event delivered (log transport)",
 				zap.String("event_id", env.ID),
 				zap.String("type", env.Type),
 				zap.String("tenant_id", env.TenantID))
 			return nil
-		}), outbox.WithLogger(log))
+		})
+	if topicID := os.Getenv("PUBSUB_TOPIC"); topicID != "" {
+		psClient, err := pubsub.NewClient(context.Background(), pubsub.DetectProjectID)
+		if err != nil {
+			log.Fatal("create pubsub client", zap.Error(err))
+		}
+		defer func() { _ = psClient.Close() }()
+		deliverer = producer.NewPubSubDeliverer(psClient, topicID)
+		log.Info("relay transport: pubsub", zap.String("topic", topicID))
+	}
+	relay := outbox.NewRelay(db, deliverer, outbox.WithLogger(log))
 
 	// On Cloud Run the relay must not be a background goroutine (ADR-003);
 	// Cloud Scheduler POSTs /internal/outbox/drain instead. Locally, a

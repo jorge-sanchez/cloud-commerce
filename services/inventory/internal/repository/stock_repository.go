@@ -219,6 +219,58 @@ func (r *PostgresStockRepository) AdjustIfSufficient(ctx context.Context, tenant
 	return &s, nil
 }
 
+// ApplyStockDeduction is the order_paid consumer's write: dedupe insert
+// and per-line clamped deductions in one transaction.
+func (r *PostgresStockRepository) ApplyStockDeduction(ctx context.Context, tenantID, eventID string, items []domain.StockDeduction) error {
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return apperrors.ErrInternal.Wrap(err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	res, err := tx.ExecContext(ctx,
+		`INSERT INTO processed_events (event_id) VALUES ($1) ON CONFLICT DO NOTHING`, eventID)
+	if err != nil {
+		return apperrors.ErrInternal.Wrap(err)
+	}
+	if n, err := res.RowsAffected(); err != nil {
+		return apperrors.ErrInternal.Wrap(err)
+	} else if n == 0 {
+		return nil // replay — already applied
+	}
+
+	for _, item := range items {
+		var s domain.StockLevel
+		err := tx.QueryRowContext(ctx, `
+			SELECT sl.id, sl.on_hand FROM stock_levels sl
+			JOIN locations l ON l.id = sl.location_id
+			WHERE sl.tenant_id = $1 AND sl.variant_id = $2 AND l.is_default
+			FOR UPDATE OF sl`,
+			tenantID, item.VariantID,
+		).Scan(&s.ID, &s.OnHand)
+		if errors.Is(err, sql.ErrNoRows) {
+			continue // never initialized — nothing to deduct
+		}
+		if err != nil {
+			return apperrors.ErrInternal.Wrap(err)
+		}
+
+		s.DeductClamped(item.Qty) // entity decides the clamp
+
+		if _, err := tx.ExecContext(ctx,
+			`UPDATE stock_levels SET on_hand = $1, updated_at = NOW() WHERE id = $2`,
+			s.OnHand, s.ID,
+		); err != nil {
+			return apperrors.ErrInternal.Wrap(err)
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return apperrors.ErrInternal.Wrap(err)
+	}
+	return nil
+}
+
 func (r *PostgresStockRepository) scanLocation(row *sql.Row) (*domain.Location, error) {
 	var l domain.Location
 	err := row.Scan(&l.ID, &l.TenantID, &l.Name, &l.IsDefault, &l.CreatedAt)

@@ -18,6 +18,17 @@ import (
 // worthwhile at the third consumer; until then this duplication is deliberate.)
 const CatalogProductCreatedType = "catalog.product_created"
 
+// OrdersOrderPaidType is the consumed order-paid event type (issue #18).
+const OrdersOrderPaidType = "orders.order_paid"
+
+type orderPaidPayload struct {
+	OrderID string `json:"order_id"`
+	Items   []struct {
+		VariantID string `json:"variant_id"`
+		Qty       int64  `json:"qty"`
+	} `json:"items"`
+}
+
 type productCreatedPayload struct {
 	ProductID string `json:"product_id"`
 	Variants  []struct {
@@ -58,6 +69,8 @@ func (s *stockService) ProcessEvent(ctx context.Context, env events.Envelope) er
 	switch env.Type {
 	case CatalogProductCreatedType:
 		return s.initializeFromProductCreated(ctx, env)
+	case OrdersOrderPaidType:
+		return s.deductFromOrderPaid(ctx, env)
 	default:
 		return nil // not ours — ack so the broker stops redelivering
 	}
@@ -79,6 +92,19 @@ func (s *stockService) initializeFromProductCreated(ctx context.Context, env eve
 		items = append(items, domain.StockInit{VariantID: v.VariantID, SKU: v.SKU})
 	}
 	return s.repo.InitializeStock(ctx, env.TenantID, location.ID, items)
+}
+
+func (s *stockService) deductFromOrderPaid(ctx context.Context, env events.Envelope) error {
+	var payload orderPaidPayload
+	if err := json.Unmarshal(env.Payload, &payload); err != nil {
+		return apperrors.ErrValidation.Wrap(err)
+	}
+	items := make([]domain.StockDeduction, 0, len(payload.Items))
+	for _, it := range payload.Items {
+		items = append(items, domain.StockDeduction{VariantID: it.VariantID, Qty: it.Qty})
+	}
+	// Deduped by envelope ID inside the repository transaction.
+	return s.repo.ApplyStockDeduction(ctx, env.TenantID, env.ID, items)
 }
 
 func (s *stockService) ListStock(ctx context.Context, tenantID string, page, pageSize int) ([]*domain.StockLevel, int, error) {
