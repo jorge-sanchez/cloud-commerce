@@ -76,6 +76,16 @@ func (h *OrderHandler) RegisterMerchantRoutes(rg *gin.RouterGroup) {
 	rg.GET("/orders", h.ListOrders)
 	rg.GET("/orders/:id", h.GetOrder)
 	rg.POST("/orders/:id/fulfill", h.FulfillOrder)
+	rg.POST("/orders/:id/refund", h.RefundOrder)
+}
+
+func (h *OrderHandler) RefundOrder(c *gin.Context) {
+	order, err := h.payments.RefundOrder(c.Request.Context(), auth.TenantID(c), auth.Role(c), c.Param("id"))
+	if err != nil {
+		apperrors.RespondError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, toOrderResponse(order))
 }
 
 type fulfillOrderRequest struct {

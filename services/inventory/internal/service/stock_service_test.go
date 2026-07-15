@@ -37,6 +37,7 @@ import (
 var _ domain.StockRepository = (*fakeStockRepo)(nil)
 
 type fakeStockRepo struct {
+	restored       []domain.StockDeduction
 	deducted       []domain.StockDeduction
 	deductTenant   string
 	deductEventID  string
@@ -79,6 +80,11 @@ func (f *fakeStockRepo) ListStockByTenant(_ context.Context, _ string, _, _ int)
 
 func (f *fakeStockRepo) AdjustIfSufficient(_ context.Context, _, _, _ string, _ int64) (*domain.StockLevel, error) {
 	return nil, f.err
+}
+
+func (f *fakeStockRepo) ApplyStockRestore(_ context.Context, _, _ string, items []domain.StockDeduction) error {
+	f.restored = append(f.restored, items...)
+	return f.err
 }
 
 func (f *fakeStockRepo) ApplyStockDeduction(_ context.Context, tenantID, eventID string, items []domain.StockDeduction) error {

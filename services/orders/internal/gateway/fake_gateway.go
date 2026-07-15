@@ -48,3 +48,11 @@ func (g *FakeGateway) ConfirmPayment(_ context.Context, orderID, reference strin
 	}
 	return nil
 }
+
+// RefundPayment on the fake verifies the reference like ConfirmPayment.
+func (g *FakeGateway) RefundPayment(_ context.Context, orderID, reference string) error {
+	if !hmac.Equal([]byte(reference), []byte(g.reference(orderID))) {
+		return apperrors.ErrValidation.Wrap(fmt.Errorf("payment reference does not verify for this order"))
+	}
+	return nil
+}

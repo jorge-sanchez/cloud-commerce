@@ -21,6 +21,9 @@ const CatalogProductCreatedType = "catalog.product_created"
 // OrdersOrderPaidType is the consumed order-paid event type (issue #18).
 const OrdersOrderPaidType = "orders.order_paid"
 
+// OrdersOrderRefundedType is the consumed refund event type (issue #28).
+const OrdersOrderRefundedType = "orders.order_refunded"
+
 type orderPaidPayload struct {
 	OrderID string `json:"order_id"`
 	Items   []struct {
@@ -71,6 +74,8 @@ func (s *stockService) ProcessEvent(ctx context.Context, env events.Envelope) er
 		return s.initializeFromProductCreated(ctx, env)
 	case OrdersOrderPaidType:
 		return s.deductFromOrderPaid(ctx, env)
+	case OrdersOrderRefundedType:
+		return s.restoreFromOrderRefunded(ctx, env)
 	default:
 		return nil // not ours — ack so the broker stops redelivering
 	}
@@ -105,6 +110,18 @@ func (s *stockService) deductFromOrderPaid(ctx context.Context, env events.Envel
 	}
 	// Deduped by envelope ID inside the repository transaction.
 	return s.repo.ApplyStockDeduction(ctx, env.TenantID, env.ID, items)
+}
+
+func (s *stockService) restoreFromOrderRefunded(ctx context.Context, env events.Envelope) error {
+	var payload orderPaidPayload // same items shape
+	if err := json.Unmarshal(env.Payload, &payload); err != nil {
+		return apperrors.ErrValidation.Wrap(err)
+	}
+	items := make([]domain.StockDeduction, 0, len(payload.Items))
+	for _, it := range payload.Items {
+		items = append(items, domain.StockDeduction{VariantID: it.VariantID, Qty: it.Qty})
+	}
+	return s.repo.ApplyStockRestore(ctx, env.TenantID, env.ID, items)
 }
 
 func (s *stockService) ListStock(ctx context.Context, tenantID string, page, pageSize int) ([]*domain.StockLevel, int, error) {

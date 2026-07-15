@@ -19,6 +19,7 @@ const (
 	OrderStatusPaid      OrderStatus = "paid"
 	OrderStatusFulfilled OrderStatus = "fulfilled"
 	OrderStatusCancelled OrderStatus = "cancelled"
+	OrderStatusRefunded  OrderStatus = "refunded"
 )
 
 // Domain sentinel errors for entity-level failures.
@@ -29,6 +30,7 @@ var (
 	ErrNotPayable     = errors.New("order cannot be marked paid in its current status")
 	ErrNotFulfillable = errors.New("order cannot be fulfilled in its current status")
 	ErrNotCancellable = errors.New("order cannot be cancelled in its current status")
+	ErrNotRefundable  = errors.New("order cannot be refunded in its current status")
 )
 
 // Item is a priced line: the snapshot taken when the buyer added it. Later
@@ -90,18 +92,19 @@ func (c *Cart) TotalCents() int64 {
 // Order is the aggregate created at checkout. It owns its items; they are
 // persisted with it atomically.
 type Order struct {
-	ID             string
-	Number         int64
-	TenantID       string
-	Email          string
-	Currency       string
-	Items          []Item
-	TotalCents     int64
-	Status         OrderStatus
-	TrackingNumber string
-	Carrier        string
-	CreatedAt      time.Time
-	UpdatedAt      time.Time
+	ID               string
+	Number           int64
+	TenantID         string
+	Email            string
+	Currency         string
+	Items            []Item
+	TotalCents       int64
+	Status           OrderStatus
+	PaymentReference string
+	TrackingNumber   string
+	Carrier          string
+	CreatedAt        time.Time
+	UpdatedAt        time.Time
 }
 
 // NewOrderFromCart converts a cart into a pending order. The entity
@@ -153,6 +156,16 @@ func (o *Order) Fulfill(trackingNumber, carrier string) error {
 	return nil
 }
 
+// Refund transitions paid or fulfilled → refunded (returns happen after
+// shipping too).
+func (o *Order) Refund() error {
+	if o.Status != OrderStatusPaid && o.Status != OrderStatusFulfilled {
+		return fmt.Errorf("%w: status is %q", ErrNotRefundable, o.Status)
+	}
+	o.Status = OrderStatusRefunded
+	return nil
+}
+
 // Cancel transitions pending → cancelled.
 func (o *Order) Cancel() error {
 	if o.Status != OrderStatusPending {
@@ -167,7 +180,21 @@ const (
 	OrderPlacedEventType    = "orders.order_placed"
 	OrderPaidEventType      = "orders.order_paid"
 	OrderFulfilledEventType = "orders.order_fulfilled"
+	OrderRefundedEventType  = "orders.order_refunded"
 )
+
+// OrderRefundedEvent is emitted at refund; inventory restores stock from it.
+type OrderRefundedEvent struct {
+	OrderID    string      `json:"order_id"`
+	TenantID   string      `json:"tenant_id"`
+	Items      []EventItem `json:"items"`
+	RefundedAt time.Time   `json:"refunded_at"`
+}
+
+// NewOrderRefundedEvent builds the event from the persisted order.
+func NewOrderRefundedEvent(o *Order, at time.Time) OrderRefundedEvent {
+	return OrderRefundedEvent{OrderID: o.ID, TenantID: o.TenantID, Items: eventItems(o), RefundedAt: at}
+}
 
 // OrderFulfilledEvent is emitted at fulfillment; notifications will consume
 // it (buyer email travels in the event so consumers need no order lookup).
@@ -262,9 +289,12 @@ type OrderRepository interface {
 	// event recorded. The entity decides (empty cart, bad email).
 	PlaceOrderFromCart(ctx context.Context, cartID, email string) (*Order, error)
 	// MarkPaidIfPayable loads the order, lets the entity decide the
-	// transition, persists it, and records order_paid. Returns
-	// apperrors.ErrConflict when the entity rejects it.
-	MarkPaidIfPayable(ctx context.Context, orderID string) (*Order, error)
+	// transition, persists it with the provider payment reference, and
+	// records order_paid. Returns apperrors.ErrConflict when rejected.
+	MarkPaidIfPayable(ctx context.Context, orderID, paymentReference string) (*Order, error)
+	// RefundIfRefundable loads the order tenant-scoped, lets the entity
+	// decide, persists it, and records order_refunded.
+	RefundIfRefundable(ctx context.Context, tenantID, orderID string) (*Order, error)
 	// FulfillIfFulfillable loads the order tenant-scoped, lets the entity
 	// decide the transition, persists it with tracking, and records
 	// order_fulfilled. Returns apperrors.ErrConflict when rejected.

@@ -1,5 +1,5 @@
-// Test Budget: 2 distinct behaviors × 2 = 4 max unit tests
-// Actual: 4
+// Test Budget: 3 distinct behaviors × 2 = 6 max unit tests
+// Actual: 6
 //
 // Behavior 1: StartPayment — pending orders get an intent; paid orders are
 //
@@ -8,6 +8,10 @@
 // Behavior 2: ConfirmPayment — a verified reference marks the order paid;
 //
 //	a failing reference leaves it untouched
+//
+// Behavior 3: RefundOrder — owner-only, and the provider refund precedes
+//
+//	the state transition
 package service
 
 import (
@@ -25,6 +29,7 @@ var _ PaymentGateway = (*fakeGatewayPort)(nil)
 
 type fakeGatewayPort struct {
 	created    []string
+	refunded   int
 	confirmErr error
 }
 
@@ -34,6 +39,11 @@ func (f *fakeGatewayPort) CreatePayment(_ context.Context, order *domain.Order) 
 }
 
 func (f *fakeGatewayPort) ConfirmPayment(_ context.Context, _, _ string) error {
+	return f.confirmErr
+}
+
+func (f *fakeGatewayPort) RefundPayment(_ context.Context, _, _ string) error {
+	f.refunded++
 	return f.confirmErr
 }
 
@@ -90,4 +100,33 @@ func TestPaymentService_ConfirmPayment_BadReference_PassesValidationThrough(t *t
 	_, err := svc.ConfirmPayment(context.Background(), "order-001", "forged-ref")
 
 	require.ErrorIs(t, err, apperrors.ErrValidation)
+}
+
+// ---------------------------------------------------------------------------
+// Behavior 3: RefundOrder authorization and ordering
+// ---------------------------------------------------------------------------
+
+func TestPaymentService_RefundOrder_NonOwner_ForbiddenWithoutTouchingGateway(t *testing.T) {
+	gw := &fakeGatewayPort{}
+	paid := pendingOrder()
+	require.NoError(t, paid.MarkPaid())
+	svc := NewPaymentService(&fakeOrderRepo{order: paid}, gw)
+
+	_, err := svc.RefundOrder(context.Background(), "tenant-001", "staff", "order-001")
+
+	require.ErrorIs(t, err, apperrors.ErrForbidden)
+	assert.Equal(t, 0, gw.refunded, "non-owners must not reach the provider")
+}
+
+func TestPaymentService_RefundOrder_OwnerOnPaidOrder_RefundsThroughGateway(t *testing.T) {
+	gw := &fakeGatewayPort{}
+	paid := pendingOrder()
+	require.NoError(t, paid.MarkPaid())
+	svc := NewPaymentService(&fakeOrderRepo{order: paid}, gw)
+
+	order, err := svc.RefundOrder(context.Background(), "tenant-001", "owner", "order-001")
+
+	require.NoError(t, err)
+	assert.Equal(t, 1, gw.refunded, "the provider refund must happen exactly once")
+	assert.NotNil(t, order)
 }

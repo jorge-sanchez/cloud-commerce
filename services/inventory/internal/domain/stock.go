@@ -135,6 +135,9 @@ type StockRepository interface {
 	// delta, and persists the result. Returns apperrors.ErrConflict when
 	// the entity rejects the adjustment.
 	AdjustIfSufficient(ctx context.Context, tenantID, locationID, variantID string, delta int64) (*StockLevel, error)
+	// ApplyStockRestore adds refunded quantities back at the default
+	// location, deduped by event ID like ApplyStockDeduction.
+	ApplyStockRestore(ctx context.Context, tenantID, eventID string, items []StockDeduction) error
 	// ApplyStockDeduction removes order quantities at the default location
 	// in one transaction, deduped by event ID: replays are no-ops
 	// (order_paid is delivered at-least-once). Missing rows are skipped;
