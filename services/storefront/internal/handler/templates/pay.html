@@ -1,0 +1,25 @@
+{{template "head" .}}
+<h1>Payment</h1>
+<div id="payment-element"></div>
+<div style="margin-top:1rem"><button id="paybtn" onclick="pay()">Pay now</button> <span id="msg" class="muted"></span></div>
+<script src="https://js.stripe.com/v3/"></script>
+<script>
+const ORDER_ID = {{.OrderID}};
+const stripe = Stripe({{.Config.StripePubKey}});
+let elements, reference;
+async function init() {
+  const intent = await api("/v1/public/orders/" + ORDER_ID + "/pay", {method: "POST"});
+  reference = intent.reference;
+  elements = stripe.elements({clientSecret: intent.client_secret});
+  elements.create("payment").mount("#payment-element");
+}
+async function pay() {
+  document.getElementById("paybtn").disabled = true;
+  const {error} = await stripe.confirmPayment({elements, redirect: "if_required"});
+  if (error) { document.getElementById("msg").textContent = error.message; document.getElementById("paybtn").disabled = false; return; }
+  try { await api("/v1/public/orders/" + ORDER_ID + "/pay/confirm", {method: "POST", body: JSON.stringify({reference})}); } catch (e) {}
+  document.body.innerHTML = "<main style='max-width:640px;margin:4rem auto;text-align:center'><h1>Thank you!</h1><p>Your order is confirmed. A receipt is on its way to your inbox.</p></main>";
+}
+init().catch(e => document.getElementById("msg").textContent = e.message);
+</script>
+{{template "foot" .}}

@@ -1,0 +1,32 @@
+{{template "head" .}}
+<h1>Your cart</h1>
+<div id="cart"></div>
+<h2>Checkout</h2>
+<form onsubmit="checkout(event)">
+  <input type="email" id="email" placeholder="you@example.com" required>
+  <button>Place order</button> <span id="msg" class="muted"></span>
+</form>
+<script>
+async function load() {
+  const id = localStorage.getItem(cartKey);
+  const el = document.getElementById("cart");
+  if (!id) { el.innerHTML = "<p class='muted'>Cart is empty.</p>"; return; }
+  try {
+    const cart = await api("/v1/public/carts/" + id);
+    el.innerHTML = "<table>" + cart.items.map(i =>
+      `<tr><td>${i.qty}× ${i.title} (${i.sku})</td><td>${(i.price_cents*i.qty/100).toFixed(2)} ${cart.currency}</td></tr>`).join("") +
+      `<tr><th>Total</th><th>${(cart.total_cents/100).toFixed(2)} ${cart.currency}</th></tr></table>`;
+  } catch (e) { el.innerHTML = "<p class='muted'>Cart is empty.</p>"; }
+}
+async function checkout(ev) {
+  ev.preventDefault();
+  try {
+    const id = localStorage.getItem(cartKey);
+    const order = await api("/v1/public/carts/" + id + "/checkout", {method: "POST", body: JSON.stringify({email: document.getElementById("email").value})});
+    localStorage.removeItem(cartKey);
+    location.href = "/" + STORE_HANDLE + "/pay/" + order.id;
+  } catch (e) { document.getElementById("msg").textContent = e.message; }
+}
+load();
+</script>
+{{template "foot" .}}
