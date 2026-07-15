@@ -460,3 +460,63 @@ func (r *PostgresOrderRepository) scanOrder(row *sql.Row) (*domain.Order, error)
 	o.Status = domain.OrderStatus(status)
 	return &o, nil
 }
+
+// GetSalesSummary runs the two aggregate reads. SQL aggregates are plenty
+// at this scale — a dedicated read model waits until they hurt (issue #30).
+func (r *PostgresOrderRepository) GetSalesSummary(ctx context.Context, tenantID string, days int) (*domain.SalesSummary, error) {
+	summary := &domain.SalesSummary{Days: []domain.DailySales{}, TopProducts: []domain.TopProduct{}}
+
+	if err := r.db.QueryRowContext(ctx, `
+		SELECT COALESCE(MAX(currency), '') FROM orders WHERE tenant_id = $1`, tenantID,
+	).Scan(&summary.Currency); err != nil {
+		return nil, apperrors.ErrInternal.Wrap(err)
+	}
+
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT to_char(created_at::date, 'YYYY-MM-DD'), SUM(total_cents), COUNT(*)
+		FROM orders
+		WHERE tenant_id = $1 AND status IN ('paid', 'fulfilled')
+		  AND created_at >= NOW() - ($2 || ' days')::interval
+		GROUP BY created_at::date ORDER BY 1`,
+		tenantID, days,
+	)
+	if err != nil {
+		return nil, apperrors.ErrInternal.Wrap(err)
+	}
+	defer func() { _ = rows.Close() }()
+	for rows.Next() {
+		var d domain.DailySales
+		if err := rows.Scan(&d.Date, &d.RevenueCents, &d.Orders); err != nil {
+			return nil, apperrors.ErrInternal.Wrap(err)
+		}
+		summary.Days = append(summary.Days, d)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, apperrors.ErrInternal.Wrap(err)
+	}
+
+	topRows, err := r.db.QueryContext(ctx, `
+		SELECT oi.sku, MAX(oi.title), SUM(oi.qty), SUM(oi.qty * oi.price_cents)
+		FROM order_items oi
+		JOIN orders o ON o.id = oi.order_id
+		WHERE oi.tenant_id = $1 AND o.status IN ('paid', 'fulfilled')
+		  AND o.created_at >= NOW() - ($2 || ' days')::interval
+		GROUP BY oi.sku ORDER BY 3 DESC LIMIT 10`,
+		tenantID, days,
+	)
+	if err != nil {
+		return nil, apperrors.ErrInternal.Wrap(err)
+	}
+	defer func() { _ = topRows.Close() }()
+	for topRows.Next() {
+		var t domain.TopProduct
+		if err := topRows.Scan(&t.SKU, &t.Title, &t.Units, &t.RevenueCents); err != nil {
+			return nil, apperrors.ErrInternal.Wrap(err)
+		}
+		summary.TopProducts = append(summary.TopProducts, t)
+	}
+	if err := topRows.Err(); err != nil {
+		return nil, apperrors.ErrInternal.Wrap(err)
+	}
+	return summary, nil
+}

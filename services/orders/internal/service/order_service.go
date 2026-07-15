@@ -45,6 +45,7 @@ type OrderService interface {
 	ListOrders(ctx context.Context, tenantID string, page, pageSize int) ([]*domain.Order, int, error)
 	FulfillOrder(ctx context.Context, tenantID, orderID, trackingNumber, carrier string) (*domain.Order, error)
 	GetOrder(ctx context.Context, tenantID, orderID string) (*domain.Order, error)
+	GetAnalytics(ctx context.Context, tenantID string, days int) (*domain.SalesSummary, error)
 }
 
 type orderService struct {
@@ -125,4 +126,11 @@ func (s *orderService) FulfillOrder(ctx context.Context, tenantID, orderID, trac
 
 func (s *orderService) GetOrder(ctx context.Context, tenantID, orderID string) (*domain.Order, error) {
 	return s.repo.GetByID(ctx, tenantID, orderID)
+}
+
+func (s *orderService) GetAnalytics(ctx context.Context, tenantID string, days int) (*domain.SalesSummary, error) {
+	if days <= 0 || days > 365 {
+		days = 30
+	}
+	return s.repo.GetSalesSummary(ctx, tenantID, days)
 }

@@ -63,6 +63,31 @@ export interface ListOrdersResponse {
   page: number /* int */;
   page_size: number /* int */;
 }
+/**
+ * DailySalesResponse is one day of revenue.
+ */
+export interface DailySalesResponse {
+  date: string;
+  revenue_cents: number /* int64 */;
+  orders: number /* int */;
+}
+/**
+ * TopProductResponse is a best-selling variant.
+ */
+export interface TopProductResponse {
+  sku: string;
+  title: string;
+  units: number /* int64 */;
+  revenue_cents: number /* int64 */;
+}
+/**
+ * AnalyticsSummaryResponse is the merchant analytics read.
+ */
+export interface AnalyticsSummaryResponse {
+  currency: string;
+  days: DailySalesResponse[];
+  top_products: TopProductResponse[];
+}
 
 //////////
 // source: order_handler.go
