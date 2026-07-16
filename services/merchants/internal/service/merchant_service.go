@@ -5,6 +5,9 @@ package service
 
 import (
 	"context"
+	"crypto/rand"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 
 	"golang.org/x/crypto/bcrypt"
@@ -39,6 +42,14 @@ type MerchantService interface {
 	AddStaff(ctx context.Context, tenantID string, actorRole domain.UserRole, email, password string) (*domain.User, error)
 	ListStaff(ctx context.Context, tenantID string, actorRole domain.UserRole) ([]*domain.User, error)
 	RemoveStaff(ctx context.Context, tenantID string, actorRole domain.UserRole, userID string) error
+	// CreateAPIKey mints a third-party key (owner-only). The plaintext is
+	// returned exactly once.
+	CreateAPIKey(ctx context.Context, tenantID string, actorRole domain.UserRole, name string) (*domain.APIKey, string, error)
+	ListAPIKeys(ctx context.Context, tenantID string, actorRole domain.UserRole) ([]*domain.APIKey, error)
+	RevokeAPIKey(ctx context.Context, tenantID string, actorRole domain.UserRole, keyID string) error
+	// ExchangeAPIKey turns a valid key into a short-lived platform token
+	// with the api role — every existing authed API then just works.
+	ExchangeAPIKey(ctx context.Context, apiKey string) (string, error)
 }
 
 type merchantService struct {
@@ -160,6 +171,59 @@ func (s *merchantService) RemoveStaff(ctx context.Context, tenantID string, acto
 		return apperrors.ErrForbidden
 	}
 	return s.repo.DeleteUserIfRemovable(ctx, tenantID, userID)
+}
+
+func hashKey(apiKey string) string {
+	sum := sha256.Sum256([]byte(apiKey))
+	return hex.EncodeToString(sum[:])
+}
+
+func (s *merchantService) CreateAPIKey(ctx context.Context, tenantID string, actorRole domain.UserRole, name string) (*domain.APIKey, string, error) {
+	if !actorRole.CanManageStaff() {
+		return nil, "", apperrors.ErrForbidden
+	}
+	raw := make([]byte, 24)
+	if _, err := rand.Read(raw); err != nil {
+		return nil, "", apperrors.ErrInternal.Wrap(err)
+	}
+	plaintext := "cck_" + hex.EncodeToString(raw)
+	key, err := s.repo.SaveNewAPIKey(ctx, tenantID, name, hashKey(plaintext))
+	if err != nil {
+		return nil, "", err
+	}
+	return key, plaintext, nil
+}
+
+func (s *merchantService) ListAPIKeys(ctx context.Context, tenantID string, actorRole domain.UserRole) ([]*domain.APIKey, error) {
+	if !actorRole.CanManageStaff() {
+		return nil, apperrors.ErrForbidden
+	}
+	return s.repo.ListAPIKeys(ctx, tenantID)
+}
+
+func (s *merchantService) RevokeAPIKey(ctx context.Context, tenantID string, actorRole domain.UserRole, keyID string) error {
+	if !actorRole.CanManageStaff() {
+		return apperrors.ErrForbidden
+	}
+	return s.repo.RevokeAPIKey(ctx, tenantID, keyID)
+}
+
+func (s *merchantService) ExchangeAPIKey(ctx context.Context, apiKey string) (string, error) {
+	key, err := s.repo.GetAPIKeyByHash(ctx, hashKey(apiKey))
+	if err != nil {
+		// Unknown and revoked keys are indistinguishable on the wire.
+		return "", apperrors.ErrUnauthorized
+	}
+	token, err := s.issuer.Issue(auth.Claims{
+		UserID:   key.ID,
+		TenantID: key.TenantID,
+		Email:    "",
+		Role:     string(domain.UserRoleAPI),
+	})
+	if err != nil {
+		return "", apperrors.ErrInternal.Wrap(err)
+	}
+	return token, nil
 }
 
 func (s *merchantService) session(m *domain.Merchant, u *domain.User) (*Session, error) {

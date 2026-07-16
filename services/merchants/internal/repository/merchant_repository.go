@@ -299,6 +299,71 @@ func (r *PostgresMerchantRepository) DeleteUserIfRemovable(ctx context.Context, 
 	return nil
 }
 
+func (r *PostgresMerchantRepository) SaveNewAPIKey(ctx context.Context, tenantID, name, keyHash string) (*domain.APIKey, error) {
+	k := domain.APIKey{TenantID: tenantID, Name: name}
+	err := r.db.QueryRowContext(ctx, `
+		INSERT INTO api_keys (tenant_id, name, key_hash)
+		VALUES ($1, $2, $3) RETURNING id, created_at`,
+		tenantID, name, keyHash,
+	).Scan(&k.ID, &k.CreatedAt)
+	if err != nil {
+		return nil, apperrors.ErrInternal.Wrap(err)
+	}
+	return &k, nil
+}
+
+func (r *PostgresMerchantRepository) ListAPIKeys(ctx context.Context, tenantID string) ([]*domain.APIKey, error) {
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT id, tenant_id, name, created_at, revoked_at
+		FROM api_keys WHERE tenant_id = $1 ORDER BY created_at DESC`, tenantID)
+	if err != nil {
+		return nil, apperrors.ErrInternal.Wrap(err)
+	}
+	defer func() { _ = rows.Close() }()
+	keys := make([]*domain.APIKey, 0, 8)
+	for rows.Next() {
+		var k domain.APIKey
+		if err := rows.Scan(&k.ID, &k.TenantID, &k.Name, &k.CreatedAt, &k.RevokedAt); err != nil {
+			return nil, apperrors.ErrInternal.Wrap(err)
+		}
+		keys = append(keys, &k)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, apperrors.ErrInternal.Wrap(err)
+	}
+	return keys, nil
+}
+
+func (r *PostgresMerchantRepository) RevokeAPIKey(ctx context.Context, tenantID, keyID string) error {
+	res, err := r.db.ExecContext(ctx, `
+		UPDATE api_keys SET revoked_at = NOW()
+		WHERE tenant_id = $1 AND id = $2 AND revoked_at IS NULL`, tenantID, keyID)
+	if err != nil {
+		return apperrors.ErrInternal.Wrap(err)
+	}
+	if n, err := res.RowsAffected(); err != nil {
+		return apperrors.ErrInternal.Wrap(err)
+	} else if n == 0 {
+		return apperrors.ErrNotFound
+	}
+	return nil
+}
+
+func (r *PostgresMerchantRepository) GetAPIKeyByHash(ctx context.Context, keyHash string) (*domain.APIKey, error) {
+	var k domain.APIKey
+	err := r.db.QueryRowContext(ctx, `
+		SELECT id, tenant_id, name, created_at, revoked_at
+		FROM api_keys WHERE key_hash = $1 AND revoked_at IS NULL`, keyHash,
+	).Scan(&k.ID, &k.TenantID, &k.Name, &k.CreatedAt, &k.RevokedAt)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, apperrors.ErrNotFound
+	}
+	if err != nil {
+		return nil, apperrors.ErrInternal.Wrap(err)
+	}
+	return &k, nil
+}
+
 func (r *PostgresMerchantRepository) scanUser(row *sql.Row) (*domain.User, error) {
 	var u domain.User
 	var role string

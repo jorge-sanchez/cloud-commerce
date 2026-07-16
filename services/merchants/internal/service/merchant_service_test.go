@@ -1,5 +1,5 @@
-// Test Budget: 5 distinct behaviors × 2 = 10 max unit tests
-// Actual: 8
+// Test Budget: 6 distinct behaviors × 2 = 12 max unit tests
+// Actual: 10
 //
 // Behavior 1: SignUp — persists merchant+owner atomically and returns a
 //
@@ -36,6 +36,8 @@ import (
 var _ domain.MerchantRepository = (*fakeMerchantRepo)(nil)
 
 type fakeMerchantRepo struct {
+	savedKeys      []*domain.APIKey
+	keyByHash      *domain.APIKey
 	savedMerchants []*domain.Merchant
 	savedStaff     []*domain.User
 	userByEmail    *domain.User
@@ -65,6 +67,25 @@ func (f *fakeMerchantRepo) GetMerchantWithUser(_ context.Context, _, _ string) (
 
 func (f *fakeMerchantRepo) GetByID(_ context.Context, _ string) (*domain.Merchant, error) {
 	return f.merchant, f.getErr
+}
+
+func (f *fakeMerchantRepo) SaveNewAPIKey(_ context.Context, tenantID, name, _ string) (*domain.APIKey, error) {
+	k := &domain.APIKey{ID: "key-001", TenantID: tenantID, Name: name}
+	f.savedKeys = append(f.savedKeys, k)
+	return k, nil
+}
+
+func (f *fakeMerchantRepo) ListAPIKeys(_ context.Context, _ string) ([]*domain.APIKey, error) {
+	return f.savedKeys, f.getErr
+}
+
+func (f *fakeMerchantRepo) RevokeAPIKey(_ context.Context, _, _ string) error { return f.getErr }
+
+func (f *fakeMerchantRepo) GetAPIKeyByHash(_ context.Context, _ string) (*domain.APIKey, error) {
+	if f.keyByHash == nil {
+		return nil, apperrors.ErrNotFound
+	}
+	return f.keyByHash, nil
 }
 
 func (f *fakeMerchantRepo) GetByHandle(_ context.Context, _ string) (*domain.Merchant, error) {
@@ -212,6 +233,35 @@ func TestMerchantService_AddStaff_ByStaff_ReturnsForbiddenAndNoWrite(t *testing.
 
 	require.ErrorIs(t, err, apperrors.ErrForbidden)
 	require.Len(t, repo.savedStaff, 0, "no staff user may be written for a non-owner actor")
+}
+
+// ---------------------------------------------------------------------------
+// Behavior 6: API keys — owner-only creation; exchange mints the api role
+// ---------------------------------------------------------------------------
+
+func TestMerchantService_CreateAPIKey_ByStaff_Forbidden(t *testing.T) {
+	repo := &fakeMerchantRepo{}
+	svc := NewMerchantService(repo, &fakeIssuer{})
+
+	_, _, err := svc.CreateAPIKey(context.Background(), "merchant-001", domain.UserRoleStaff, "zapier")
+
+	require.ErrorIs(t, err, apperrors.ErrForbidden)
+	require.Len(t, repo.savedKeys, 0, "no key may be written for a non-owner actor")
+}
+
+func TestMerchantService_ExchangeAPIKey_ValidKey_MintsAPIRoleToken(t *testing.T) {
+	issuer := &fakeIssuer{}
+	svc := NewMerchantService(&fakeMerchantRepo{
+		keyByHash: &domain.APIKey{ID: "key-001", TenantID: "merchant-001"},
+	}, issuer)
+
+	token, err := svc.ExchangeAPIKey(context.Background(), "cck_abc")
+
+	require.NoError(t, err)
+	assert.NotEmpty(t, token)
+	require.Len(t, issuer.issued, 1, "exactly one token must be issued")
+	assert.Equal(t, "api", issuer.issued[0].Role, "exchanged tokens must carry the api role, never owner")
+	assert.Equal(t, "merchant-001", issuer.issued[0].TenantID)
 }
 
 // ---------------------------------------------------------------------------

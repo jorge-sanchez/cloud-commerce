@@ -44,6 +44,29 @@ type ListStaffResponse struct {
 	PageSize int            `json:"page_size"`
 }
 
+// APIKeyResponse is the key metadata shape. Key (plaintext) is present
+// only in the creation response — it is never retrievable again.
+type APIKeyResponse struct {
+	ID        string    `json:"id"`
+	Name      string    `json:"name"`
+	Key       string    `json:"key,omitempty"`
+	Revoked   bool      `json:"revoked"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
+// ListAPIKeysResponse is the blessed offset envelope (page always 1).
+type ListAPIKeysResponse struct {
+	Items    []APIKeyResponse `json:"items"`
+	Total    int              `json:"total"`
+	Page     int              `json:"page"`
+	PageSize int              `json:"page_size"`
+}
+
+// APITokenResponse is the key-exchange result.
+type APITokenResponse struct {
+	Token string `json:"token"`
+}
+
 // PublicStoreResponse is the unauthenticated storefront lookup shape —
 // only what a buyer client needs to browse and display prices.
 type PublicStoreResponse struct {

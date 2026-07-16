@@ -28,12 +28,74 @@ func NewMerchantHandler(svc service.MerchantService) *MerchantHandler {
 func (h *MerchantHandler) RegisterPublicRoutes(rg *gin.RouterGroup) {
 	rg.POST("/auth/signup", h.SignUp)
 	rg.POST("/auth/login", h.LogIn)
+	rg.POST("/auth/token", h.ExchangeAPIToken)
 }
 
 // RegisterStorefrontRoutes mounts the buyer-facing public routes; wrap the
 // group with cors.Public() (no credentials, any origin).
 func (h *MerchantHandler) RegisterStorefrontRoutes(rg *gin.RouterGroup) {
 	rg.GET("/public/stores/:handle", h.PublicStore)
+}
+
+type createAPIKeyRequest struct {
+	Name string `json:"name" binding:"required"`
+}
+
+func (h *MerchantHandler) CreateAPIKey(c *gin.Context) {
+	var req createAPIKeyRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		apperrors.RespondError(c, apperrors.ErrValidation.Wrap(err))
+		return
+	}
+	key, plaintext, err := h.svc.CreateAPIKey(c.Request.Context(), auth.TenantID(c), actorRole(c), req.Name)
+	if err != nil {
+		apperrors.RespondError(c, err)
+		return
+	}
+	c.JSON(http.StatusCreated, APIKeyResponse{
+		ID: key.ID, Name: key.Name, Key: plaintext, Revoked: false, CreatedAt: key.CreatedAt,
+	})
+}
+
+func (h *MerchantHandler) ListAPIKeys(c *gin.Context) {
+	keys, err := h.svc.ListAPIKeys(c.Request.Context(), auth.TenantID(c), actorRole(c))
+	if err != nil {
+		apperrors.RespondError(c, err)
+		return
+	}
+	items := make([]APIKeyResponse, 0, len(keys))
+	for _, k := range keys {
+		items = append(items, APIKeyResponse{ID: k.ID, Name: k.Name, Revoked: k.Revoked(), CreatedAt: k.CreatedAt})
+	}
+	c.JSON(http.StatusOK, ListAPIKeysResponse{Items: items, Total: len(items), Page: 1, PageSize: len(items)})
+}
+
+func (h *MerchantHandler) RevokeAPIKey(c *gin.Context) {
+	if err := h.svc.RevokeAPIKey(c.Request.Context(), auth.TenantID(c), actorRole(c), c.Param("id")); err != nil {
+		apperrors.RespondError(c, err)
+		return
+	}
+	c.Status(http.StatusNoContent)
+}
+
+type apiTokenRequest struct {
+	APIKey string `json:"api_key" binding:"required"`
+}
+
+// ExchangeAPIToken is public: a valid key yields a short-lived platform
+// token with the api role.
+func (h *MerchantHandler) ExchangeAPIToken(c *gin.Context) {
+	var req apiTokenRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		apperrors.RespondError(c, apperrors.ErrValidation.Wrap(err))
+		return
+	}
+	token, err := h.svc.ExchangeAPIKey(c.Request.Context(), req.APIKey)
+	if err != nil {
+		apperrors.RespondError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, APITokenResponse{Token: token})
 }
 
 func (h *MerchantHandler) PublicStore(c *gin.Context) {
@@ -60,6 +122,9 @@ func (h *MerchantHandler) RegisterAuthedRoutes(rg *gin.RouterGroup) {
 	rg.POST("/staff", h.AddStaff)
 	rg.GET("/staff", h.ListStaff)
 	rg.DELETE("/staff/:id", h.RemoveStaff)
+	rg.POST("/api-keys", h.CreateAPIKey)
+	rg.GET("/api-keys", h.ListAPIKeys)
+	rg.DELETE("/api-keys/:id", h.RevokeAPIKey)
 }
 
 // actorRole reads the verified role claim. Authorization decisions live in
