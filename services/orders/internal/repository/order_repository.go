@@ -185,6 +185,73 @@ func (r *PostgresOrderRepository) PlaceOrderFromCart(ctx context.Context, cartID
 	return order, nil
 }
 
+// SavePOSSale persists an in-person sale atomically, idempotent on the
+// client sale ID (offline POS clients retry their queue).
+func (r *PostgresOrderRepository) SavePOSSale(ctx context.Context, tenantID, clientSaleID string, order *domain.Order) (*domain.Order, error) {
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, apperrors.ErrInternal.Wrap(err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	stored := *order
+	err = tx.QueryRowContext(ctx, `
+		INSERT INTO orders (tenant_id, email, currency, total_cents, status, payment_reference, client_sale_id)
+		VALUES ($1, $2, $3, $4, $5, $6, $7)
+		ON CONFLICT (tenant_id, client_sale_id) WHERE client_sale_id IS NOT NULL DO NOTHING
+		RETURNING id, number, created_at, updated_at`,
+		tenantID, order.Email, order.Currency, order.TotalCents, string(order.Status),
+		"pos_cash_"+clientSaleID, clientSaleID,
+	).Scan(&stored.ID, &stored.Number, &stored.CreatedAt, &stored.UpdatedAt)
+	if errors.Is(err, sql.ErrNoRows) {
+		// Replay: return the original sale.
+		existing, gerr := r.getBySaleID(ctx, tenantID, clientSaleID)
+		if gerr != nil {
+			return nil, gerr
+		}
+		return existing, nil
+	}
+	if err != nil {
+		return nil, apperrors.ErrInternal.Wrap(err)
+	}
+	for _, it := range stored.Items {
+		if _, err := tx.ExecContext(ctx, `
+			INSERT INTO order_items (order_id, variant_id, tenant_id, sku, title, price_cents, qty)
+			VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+			stored.ID, it.VariantID, tenantID, it.SKU, it.Title, it.PriceCents, it.Qty,
+		); err != nil {
+			return nil, apperrors.ErrInternal.Wrap(err)
+		}
+	}
+	if r.events != nil {
+		event := domain.NewOrderPaidEvent(&stored, time.Now().UTC())
+		env, err := events.New(tenantID, stored.ID, domain.OrderPaidEventType, event.PaidAt, event)
+		if err != nil {
+			return nil, apperrors.ErrInternal.Wrap(err)
+		}
+		if err := r.events.Record(ctx, tx, env); err != nil {
+			return nil, err
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, apperrors.ErrInternal.Wrap(err)
+	}
+	return &stored, nil
+}
+
+func (r *PostgresOrderRepository) getBySaleID(ctx context.Context, tenantID, clientSaleID string) (*domain.Order, error) {
+	order, err := r.scanOrder(r.db.QueryRowContext(ctx,
+		`SELECT `+orderColumns+` FROM orders WHERE tenant_id = $1 AND client_sale_id = $2`, tenantID, clientSaleID))
+	if err != nil {
+		return nil, err
+	}
+	order.Items, err = r.loadItems(ctx, r.db, "order_items", "order_id", order.ID)
+	if err != nil {
+		return nil, err
+	}
+	return order, nil
+}
+
 // MarkPaidIfPayable loads the order inside a transaction, lets the entity
 // decide the transition, and persists what the entity decided. Looked up by
 // order ID alone: payment confirmation arrives on the buyer's capability.

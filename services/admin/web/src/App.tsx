@@ -7,6 +7,7 @@ import Products from "./pages/Products";
 import Stock from "./pages/Stock";
 import Orders from "./pages/Orders";
 import Analytics from "./pages/Analytics";
+import POS from "./pages/POS";
 
 function Layout() {
   const navigate = useNavigate();
@@ -22,6 +23,7 @@ function Layout() {
         <NavLink to="/stock">Stock</NavLink>
         <NavLink to="/orders">Orders</NavLink>
         <NavLink to="/analytics">Analytics</NavLink>
+        <NavLink to="/pos">POS</NavLink>
         <button
           className="linklike"
           onClick={() => {
@@ -51,6 +53,7 @@ export default function App() {
         <Route path="/stock" element={<Stock />} />
         <Route path="/orders" element={<Orders />} />
         <Route path="/analytics" element={<Analytics />} />
+        <Route path="/pos" element={<POS />} />
       </Route>
     </Routes>
   );

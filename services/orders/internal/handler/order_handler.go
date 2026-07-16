@@ -79,6 +79,37 @@ func (h *OrderHandler) RegisterMerchantRoutes(rg *gin.RouterGroup) {
 	rg.POST("/orders/:id/fulfill", h.FulfillOrder)
 	rg.POST("/orders/:id/refund", h.RefundOrder)
 	rg.GET("/analytics/summary", h.Analytics)
+	rg.POST("/pos/sales", h.RecordPOSSale)
+}
+
+type posLineRequest struct {
+	VariantID string `json:"variant_id" binding:"required"`
+	Qty       int64  `json:"qty" binding:"required"`
+}
+
+type posSaleRequest struct {
+	ClientSaleID string           `json:"client_sale_id" binding:"required"`
+	Currency     string           `json:"currency" binding:"required"`
+	Email        string           `json:"email"`
+	Lines        []posLineRequest `json:"lines" binding:"required,min=1"`
+}
+
+func (h *OrderHandler) RecordPOSSale(c *gin.Context) {
+	var req posSaleRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		apperrors.RespondError(c, apperrors.ErrValidation.Wrap(err))
+		return
+	}
+	lines := make([]service.POSLine, 0, len(req.Lines))
+	for _, l := range req.Lines {
+		lines = append(lines, service.POSLine{VariantID: l.VariantID, Qty: l.Qty})
+	}
+	order, err := h.svc.RecordPOSSale(c.Request.Context(), auth.TenantID(c), req.ClientSaleID, req.Currency, req.Email, lines)
+	if err != nil {
+		apperrors.RespondError(c, err)
+		return
+	}
+	c.JSON(http.StatusCreated, toOrderResponse(order))
 }
 
 func (h *OrderHandler) Analytics(c *gin.Context) {

@@ -10,6 +10,12 @@ import (
 	"github.com/jorge-sanchez/cloud-commerce/services/orders/internal/domain"
 )
 
+// POSLine is one line of an in-person sale.
+type POSLine struct {
+	VariantID string
+	Qty       int64
+}
+
 // StoreInfo is what checkout needs to know about a store.
 type StoreInfo struct {
 	TenantID string
@@ -44,6 +50,9 @@ type OrderService interface {
 	Checkout(ctx context.Context, cartID, email string) (*domain.Order, error)
 	ListOrders(ctx context.Context, tenantID string, page, pageSize int) ([]*domain.Order, int, error)
 	FulfillOrder(ctx context.Context, tenantID, orderID, trackingNumber, carrier string) (*domain.Order, error)
+	// RecordPOSSale registers an in-person cash sale (ADR-010): prices
+	// snapshot server-side; idempotent on the client sale ID.
+	RecordPOSSale(ctx context.Context, tenantID, clientSaleID, currency, email string, lines []POSLine) (*domain.Order, error)
 	GetOrder(ctx context.Context, tenantID, orderID string) (*domain.Order, error)
 	GetAnalytics(ctx context.Context, tenantID string, days int) (*domain.SalesSummary, error)
 }
@@ -116,6 +125,25 @@ func (s *orderService) Checkout(ctx context.Context, cartID, email string) (*dom
 
 func (s *orderService) ListOrders(ctx context.Context, tenantID string, page, pageSize int) ([]*domain.Order, int, error) {
 	return s.repo.ListByTenant(ctx, tenantID, page, pageSize)
+}
+
+func (s *orderService) RecordPOSSale(ctx context.Context, tenantID, clientSaleID, currency, email string, lines []POSLine) (*domain.Order, error) {
+	items := make([]domain.Item, 0, len(lines))
+	for _, l := range lines {
+		snap, err := s.platform.GetActiveVariant(ctx, tenantID, l.VariantID)
+		if err != nil {
+			return nil, err
+		}
+		items = append(items, domain.Item{
+			VariantID: snap.VariantID, SKU: snap.SKU, Title: snap.Title,
+			PriceCents: snap.PriceCents, Qty: l.Qty,
+		})
+	}
+	sale, err := domain.NewPOSSale(tenantID, currency, email, items) // entity decides
+	if err != nil {
+		return nil, apperrors.ErrValidation.Wrap(err)
+	}
+	return s.repo.SavePOSSale(ctx, tenantID, clientSaleID, sale)
 }
 
 func (s *orderService) FulfillOrder(ctx context.Context, tenantID, orderID, trackingNumber, carrier string) (*domain.Order, error) {
