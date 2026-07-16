@@ -11,6 +11,8 @@ import (
 
 	"github.com/gin-gonic/gin"
 	_ "github.com/lib/pq"
+
+	"github.com/jorge-sanchez/cloud-commerce/pkg/auth"
 	"google.golang.org/api/idtoken"
 
 	"go.uber.org/zap"
@@ -65,6 +67,13 @@ func main() {
 	}
 	sender := gateway.NewResendSender(apiKey, envOr("EMAIL_FROM", "onboarding@resend.dev"))
 	svc := service.NewNotificationService(repository.NewPostgresSentLog(db), sender)
+	webhooks := service.NewWebhookService(
+		repository.NewPostgresWebhookRepo(db), gateway.NewHTTPWebhookPoster())
+
+	verifier, err := auth.NewVerifier(os.Getenv("JWT_PUBLIC_KEY"))
+	if err != nil {
+		log.Fatal("JWT_PUBLIC_KEY must hold the platform public key", zap.Error(err))
+	}
 
 	if env != "local" {
 		gin.SetMode(gin.ReleaseMode)
@@ -79,7 +88,10 @@ func main() {
 	})
 	handler.NewPubSubHandler(svc, idtokenValidator{},
 		os.Getenv("PUBSUB_AUDIENCE"), os.Getenv("PUBSUB_PUSH_SA")).
+		WithWebhooks(webhooks).
 		RegisterRoutes(router.Group("/internal"))
+	handler.NewWebhookAdminHandler(webhooks).
+		RegisterRoutes(router.Group("/v1", auth.Middleware(verifier)))
 
 	addr := ":" + envOr("PORT", "8080")
 	log.Info("notifications service listening", zap.String("addr", addr))

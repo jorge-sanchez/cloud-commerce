@@ -25,6 +25,7 @@ type PushTokenValidator interface {
 // idempotent. A non-2xx response makes Pub/Sub redeliver.
 type PubSubHandler struct {
 	svc       service.NotificationService // required
+	webhooks  service.WebhookService      // may be nil (no fan-out)
 	validator PushTokenValidator          // required
 	audience  string                      // required — this endpoint's URL
 	pusherSA  string                      // required — only this SA may push
@@ -34,6 +35,12 @@ type PubSubHandler struct {
 // required; an empty pusherSA fails closed.
 func NewPubSubHandler(svc service.NotificationService, validator PushTokenValidator, audience, pusherSA string) *PubSubHandler {
 	return &PubSubHandler{svc: svc, validator: validator, audience: audience, pusherSA: pusherSA}
+}
+
+// WithWebhooks wires merchant webhook fan-out (issue #44).
+func (h *PubSubHandler) WithWebhooks(w service.WebhookService) *PubSubHandler {
+	h.webhooks = w
+	return h
 }
 
 // RegisterRoutes mounts the internal push route.
@@ -76,6 +83,12 @@ func (h *PubSubHandler) Receive(c *gin.Context) {
 		// Real processing failure: non-2xx so Pub/Sub retries.
 		apperrors.RespondError(c, err)
 		return
+	}
+	if h.webhooks != nil {
+		if err := h.webhooks.FanOut(c.Request.Context(), env, req.Message.Data); err != nil {
+			apperrors.RespondError(c, err) // retry; delivered endpoints skip
+			return
+		}
 	}
 	c.Status(http.StatusNoContent)
 }

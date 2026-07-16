@@ -13,6 +13,8 @@ require (
 	google.golang.org/api v0.288.0
 )
 
+require github.com/golang-jwt/jwt/v5 v5.3.1 // indirect
+
 require (
 	cloud.google.com/go/auth v0.20.0 // indirect
 	cloud.google.com/go/auth/oauth2adapt v0.2.8 // indirect
@@ -36,6 +38,7 @@ require (
 	github.com/google/s2a-go v0.1.9 // indirect
 	github.com/googleapis/enterprise-certificate-proxy v0.3.17 // indirect
 	github.com/googleapis/gax-go/v2 v2.22.0 // indirect
+	github.com/jorge-sanchez/cloud-commerce/pkg/auth v0.0.0
 	github.com/json-iterator/go v1.1.12 // indirect
 	github.com/klauspost/cpuid/v2 v2.3.0 // indirect
 	github.com/leodido/go-urn v1.4.0 // indirect
@@ -74,3 +77,5 @@ replace github.com/jorge-sanchez/cloud-commerce/pkg/events => ../../pkg/events
 replace github.com/jorge-sanchez/cloud-commerce/pkg/logger => ../../pkg/logger
 
 replace github.com/jorge-sanchez/cloud-commerce/pkg/testdb => ../../pkg/testdb
+
+replace github.com/jorge-sanchez/cloud-commerce/pkg/auth => ../../pkg/auth
