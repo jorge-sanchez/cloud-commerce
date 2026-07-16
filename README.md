@@ -38,6 +38,27 @@ Services follow domain-driven design: business rules live on domain entities, re
 
 Conventions are documented in [CLAUDE.md](CLAUDE.md) and significant decisions are recorded as ADRs in [docs/adrs/](docs/adrs/).
 
+## Live environments
+
+Everything runs on Cloud Run (scale-to-zero) in the `cloud-commerce-prd`
+GCP project. Payments are Stripe **test mode** — card `4242 4242 4242 4242`,
+any future expiry/CVC.
+
+| Surface | URL |
+|---|---|
+| Merchant admin (SPA) | https://admin-bjm36sbwlq-uc.a.run.app |
+| Storefront — Tienda Jorge (PE, tax-inclusive) | https://storefront-bjm36sbwlq-uc.a.run.app/tienda-jorge-59bf |
+| Storefront — Austin Outfitters (US, tax-exclusive) | https://storefront-bjm36sbwlq-uc.a.run.app/austin-outfitters |
+| Merchants API | https://merchants-bjm36sbwlq-uc.a.run.app |
+| Catalog API | https://catalog-bjm36sbwlq-uc.a.run.app |
+| Inventory API | https://inventory-bjm36sbwlq-uc.a.run.app |
+| Orders API | https://orders-bjm36sbwlq-uc.a.run.app |
+
+Third-party integrations authenticate per [docs/API.md](docs/API.md).
+The two storefronts double as living proof of RFC-002's tax modes:
+the same codebase shows "Incluye IGV" pricing in one store and adds
+Texas sales tax at checkout in the other.
+
 ## Getting started
 
 Prerequisites: Go 1.25+, Docker, and [golang-migrate](https://github.com/golang-migrate/migrate) for database migrations.
