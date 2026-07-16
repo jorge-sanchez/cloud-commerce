@@ -98,6 +98,11 @@ func TestPostgresMerchantRepository_SaveNewWithOwner_Valid_PersistsAggregateAndE
 		merchant.ID, domain.MerchantSignedUpEventType,
 	).Scan(&eventCount))
 	assert.Equal(t, 1, eventCount, "the signed-up event must be recorded with the aggregate")
+
+	methods, err := repo.ListShippingMethods(context.Background(), merchant.ID, true)
+	require.NoError(t, err)
+	require.Len(t, methods, 1, "signup must seed the free Standard method (RFC-001)")
+	assert.Equal(t, "Standard", methods[0].Name)
 }
 
 func TestPostgresMerchantRepository_SaveNewWithOwner_TakenEmail_ReturnsConflictAndWritesNothing(t *testing.T) {

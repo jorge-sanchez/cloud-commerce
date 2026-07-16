@@ -94,6 +94,17 @@ func (r *PostgresMerchantRepository) SaveNewWithOwner(ctx context.Context, m *do
 		return nil, nil, apperrors.ErrInternal.Wrap(err)
 	}
 
+	// Every store checks out with at least one active method (RFC-001):
+	// seed the free Standard method inside the signup transaction, the
+	// same guarantee the migration gave pre-existing tenants.
+	if _, err := tx.ExecContext(ctx, `
+		INSERT INTO shipping_methods (tenant_id, name, price_cents)
+		VALUES ($1, 'Standard', 0)`,
+		merchant.ID,
+	); err != nil {
+		return nil, nil, apperrors.ErrInternal.Wrap(err)
+	}
+
 	// Record the event in the same transaction as the aggregate (ADR-002).
 	if r.events != nil {
 		event := domain.NewMerchantSignedUpEvent(&merchant, &user, time.Now().UTC())
