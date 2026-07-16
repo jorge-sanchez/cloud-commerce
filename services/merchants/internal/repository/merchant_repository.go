@@ -62,10 +62,10 @@ func (r *PostgresMerchantRepository) SaveNewWithOwner(ctx context.Context, m *do
 	insert := func(handle string) error {
 		merchant.Handle = handle
 		return tx.QueryRowContext(ctx, `
-			INSERT INTO merchants (name, handle, status, currency, timezone, support_email)
-			VALUES ($1, $2, $3, $4, $5, $6)
+			INSERT INTO merchants (name, handle, status, country, tax_mode, currency, timezone, support_email)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 			RETURNING id, created_at, updated_at`,
-			m.Name, handle, string(m.Status), m.Settings.Currency, m.Settings.Timezone, m.Settings.SupportEmail,
+			m.Name, handle, string(m.Status), m.Country, string(m.TaxMode), m.Settings.Currency, m.Settings.Timezone, m.Settings.SupportEmail,
 		).Scan(&merchant.ID, &merchant.CreatedAt, &merchant.UpdatedAt)
 	}
 	err = insert(m.Handle)
@@ -137,7 +137,7 @@ func (r *PostgresMerchantRepository) GetMerchantWithUser(ctx context.Context, te
 	return merchant, user, nil
 }
 
-const merchantColumns = `id, name, handle, status, currency, timezone, support_email, created_at, updated_at`
+const merchantColumns = `id, name, handle, status, country, tax_mode, currency, timezone, support_email, created_at, updated_at`
 
 func (r *PostgresMerchantRepository) GetByID(ctx context.Context, tenantID string) (*domain.Merchant, error) {
 	return r.scanMerchant(r.db.QueryRowContext(ctx,
@@ -206,8 +206,10 @@ func (r *PostgresMerchantRepository) UpdateStoreProfile(ctx context.Context, ten
 func (r *PostgresMerchantRepository) scanMerchant(row *sql.Row) (*domain.Merchant, error) {
 	var m domain.Merchant
 	var status string
-	err := row.Scan(&m.ID, &m.Name, &m.Handle, &status, &m.Settings.Currency, &m.Settings.Timezone,
+	var taxMode string
+	err := row.Scan(&m.ID, &m.Name, &m.Handle, &status, &m.Country, &taxMode, &m.Settings.Currency, &m.Settings.Timezone,
 		&m.Settings.SupportEmail, &m.CreatedAt, &m.UpdatedAt)
+	m.TaxMode = domain.TaxMode(taxMode)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, apperrors.ErrNotFound
 	}
@@ -362,6 +364,55 @@ func (r *PostgresMerchantRepository) GetAPIKeyByHash(ctx context.Context, keyHas
 		return nil, apperrors.ErrInternal.Wrap(err)
 	}
 	return &k, nil
+}
+
+func (r *PostgresMerchantRepository) SaveNewTaxRate(ctx context.Context, t *domain.TaxRate) (*domain.TaxRate, error) {
+	stored := *t
+	err := r.db.QueryRowContext(ctx, `
+		INSERT INTO tax_rates (tenant_id, name, country, region, rate_bps, applies_to_shipping)
+		VALUES ($1, $2, $3, $4, $5, $6) RETURNING id, created_at`,
+		t.TenantID, t.Name, t.Country, t.Region, t.RateBps, t.AppliesToShipping,
+	).Scan(&stored.ID, &stored.CreatedAt)
+	if err != nil {
+		return nil, apperrors.ErrInternal.Wrap(err)
+	}
+	return &stored, nil
+}
+
+func (r *PostgresMerchantRepository) ListTaxRates(ctx context.Context, tenantID string) ([]*domain.TaxRate, error) {
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT id, tenant_id, name, country, region, rate_bps, applies_to_shipping, created_at
+		FROM tax_rates WHERE tenant_id = $1 ORDER BY country, region, created_at`, tenantID)
+	if err != nil {
+		return nil, apperrors.ErrInternal.Wrap(err)
+	}
+	defer func() { _ = rows.Close() }()
+	out := make([]*domain.TaxRate, 0, 4)
+	for rows.Next() {
+		var t domain.TaxRate
+		if err := rows.Scan(&t.ID, &t.TenantID, &t.Name, &t.Country, &t.Region, &t.RateBps, &t.AppliesToShipping, &t.CreatedAt); err != nil {
+			return nil, apperrors.ErrInternal.Wrap(err)
+		}
+		out = append(out, &t)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, apperrors.ErrInternal.Wrap(err)
+	}
+	return out, nil
+}
+
+func (r *PostgresMerchantRepository) DeleteTaxRate(ctx context.Context, tenantID, id string) error {
+	res, err := r.db.ExecContext(ctx,
+		`DELETE FROM tax_rates WHERE tenant_id = $1 AND id = $2`, tenantID, id)
+	if err != nil {
+		return apperrors.ErrInternal.Wrap(err)
+	}
+	if n, err := res.RowsAffected(); err != nil {
+		return apperrors.ErrInternal.Wrap(err)
+	} else if n == 0 {
+		return apperrors.ErrNotFound
+	}
+	return nil
 }
 
 func (r *PostgresMerchantRepository) SaveNewShippingMethod(ctx context.Context, m *domain.ShippingMethod) (*domain.ShippingMethod, error) {

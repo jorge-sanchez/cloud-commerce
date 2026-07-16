@@ -32,7 +32,7 @@ type Session struct {
 
 // MerchantService is the application-service port consumed by the handlers.
 type MerchantService interface {
-	SignUp(ctx context.Context, storeName, email, password string) (*Session, error)
+	SignUp(ctx context.Context, storeName, email, password, country string, taxMode domain.TaxMode) (*Session, error)
 	LogIn(ctx context.Context, email, password string) (*Session, error)
 	Me(ctx context.Context, tenantID, userID string) (*domain.Merchant, *domain.User, error)
 	GetStore(ctx context.Context, tenantID string) (*domain.Merchant, error)
@@ -47,6 +47,11 @@ type MerchantService interface {
 	CreateAPIKey(ctx context.Context, tenantID string, actorRole domain.UserRole, name string) (*domain.APIKey, string, error)
 	ListAPIKeys(ctx context.Context, tenantID string, actorRole domain.UserRole) ([]*domain.APIKey, error)
 	RevokeAPIKey(ctx context.Context, tenantID string, actorRole domain.UserRole, keyID string) error
+	CreateTaxRate(ctx context.Context, tenantID string, actorRole domain.UserRole, name, country, region string, rateBps int, appliesToShipping bool) (*domain.TaxRate, error)
+	ListTaxRates(ctx context.Context, tenantID string, actorRole domain.UserRole) ([]*domain.TaxRate, error)
+	DeleteTaxRate(ctx context.Context, tenantID string, actorRole domain.UserRole, id string) error
+	// PublicTaxRates is the checkout read (rates hold no secrets).
+	PublicTaxRates(ctx context.Context, tenantID string) ([]*domain.TaxRate, error)
 	CreateShippingMethod(ctx context.Context, tenantID string, actorRole domain.UserRole, name string, priceCents int64) (*domain.ShippingMethod, error)
 	ListShippingMethods(ctx context.Context, tenantID string, actorRole domain.UserRole) ([]*domain.ShippingMethod, error)
 	DeactivateShippingMethod(ctx context.Context, tenantID string, actorRole domain.UserRole, id string) error
@@ -74,8 +79,8 @@ func NewMerchantService(repo domain.MerchantRepository, issuer TokenIssuer, opts
 	return s
 }
 
-func (s *merchantService) SignUp(ctx context.Context, storeName, email, password string) (*Session, error) {
-	merchant, err := domain.NewMerchant(storeName)
+func (s *merchantService) SignUp(ctx context.Context, storeName, email, password, country string, taxMode domain.TaxMode) (*Session, error) {
+	merchant, err := domain.NewMerchant(storeName, country, taxMode)
 	if err != nil {
 		return nil, apperrors.ErrValidation.Wrap(err)
 	}
@@ -229,6 +234,35 @@ func (s *merchantService) ExchangeAPIKey(ctx context.Context, apiKey string) (st
 		return "", apperrors.ErrInternal.Wrap(err)
 	}
 	return token, nil
+}
+
+func (s *merchantService) CreateTaxRate(ctx context.Context, tenantID string, actorRole domain.UserRole, name, country, region string, rateBps int, appliesToShipping bool) (*domain.TaxRate, error) {
+	if !actorRole.CanManageStaff() {
+		return nil, apperrors.ErrForbidden
+	}
+	rate, err := domain.NewTaxRate(tenantID, name, country, region, rateBps, appliesToShipping) // entity decides
+	if err != nil {
+		return nil, apperrors.ErrValidation.Wrap(err)
+	}
+	return s.repo.SaveNewTaxRate(ctx, rate)
+}
+
+func (s *merchantService) ListTaxRates(ctx context.Context, tenantID string, actorRole domain.UserRole) ([]*domain.TaxRate, error) {
+	if !actorRole.CanManageStaff() {
+		return nil, apperrors.ErrForbidden
+	}
+	return s.repo.ListTaxRates(ctx, tenantID)
+}
+
+func (s *merchantService) DeleteTaxRate(ctx context.Context, tenantID string, actorRole domain.UserRole, id string) error {
+	if !actorRole.CanManageStaff() {
+		return apperrors.ErrForbidden
+	}
+	return s.repo.DeleteTaxRate(ctx, tenantID, id)
+}
+
+func (s *merchantService) PublicTaxRates(ctx context.Context, tenantID string) ([]*domain.TaxRate, error) {
+	return s.repo.ListTaxRates(ctx, tenantID)
 }
 
 func (s *merchantService) CreateShippingMethod(ctx context.Context, tenantID string, actorRole domain.UserRole, name string, priceCents int64) (*domain.ShippingMethod, error) {

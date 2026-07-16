@@ -21,7 +21,7 @@ import (
 
 func activeMerchant(t *testing.T) *domain.Merchant {
 	t.Helper()
-	m, err := domain.NewMerchant("Jorge's Store")
+	m, err := domain.NewMerchant("Jorge's Store", "PE", "")
 	require.NoError(t, err)
 	return m
 }

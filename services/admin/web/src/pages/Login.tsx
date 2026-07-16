@@ -6,6 +6,8 @@ import type { SessionResponse } from "../types/merchants";
 export default function Login() {
   const [mode, setMode] = useState<"login" | "signup">("login");
   const [storeName, setStoreName] = useState("");
+  const [country, setCountry] = useState("US");
+  const [taxMode, setTaxMode] = useState("exclusive");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -24,6 +26,8 @@ export default function Login() {
               store_name: storeName,
               email,
               password,
+              country,
+              tax_mode: taxMode,
             });
       setToken(session.token);
       navigate("/store");
@@ -55,10 +59,42 @@ export default function Login() {
           </button>
         </div>
         {mode === "signup" && (
-          <label>
-            Store name
-            <input value={storeName} onChange={(e) => setStoreName(e.target.value)} required />
-          </label>
+          <>
+            <label>
+              Store name
+              <input value={storeName} onChange={(e) => setStoreName(e.target.value)} required />
+            </label>
+            <label>
+              Country
+              <input
+                value={country}
+                maxLength={2}
+                onChange={(e) => {
+                  const c = e.target.value.toUpperCase();
+                  setCountry(c);
+                  // RFC-002: derived default, confirmed explicitly below.
+                  setTaxMode(c === "US" || c === "CA" ? "exclusive" : "inclusive");
+                }}
+                required
+              />
+            </label>
+            <label>
+              <input
+                type="radio"
+                checked={taxMode === "exclusive"}
+                onChange={() => setTaxMode("exclusive")}
+              />{" "}
+              Tax added at checkout — standard in the US/Canada
+            </label>
+            <label>
+              <input
+                type="radio"
+                checked={taxMode === "inclusive"}
+                onChange={() => setTaxMode("inclusive")}
+              />{" "}
+              Prices include tax — standard in Peru, LatAm, and the EU
+            </label>
+          </>
         )}
         <label>
           Email

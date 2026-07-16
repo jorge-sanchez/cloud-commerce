@@ -38,7 +38,29 @@ var (
 	ErrInvalidTimezone = errors.New("timezone must be a valid IANA zone name")
 	// ErrNegativeShipping guards flat-rate creation (RFC-001/ADR-011).
 	ErrNegativeShipping = errors.New("shipping price must not be negative")
+	ErrBadCountry       = errors.New("country must be a two-letter ISO code")
+	ErrBadTaxMode       = errors.New("tax mode must be inclusive or exclusive")
+	ErrBadTaxRate       = errors.New("tax rate must be between 0 and 10000 basis points")
 )
+
+// TaxMode is how a store's prices relate to tax (RFC-002): inclusive
+// (EU/PE — displayed prices contain tax) or exclusive (US/CA — tax is
+// added at checkout). Near-immutable once the store has orders.
+type TaxMode string
+
+const (
+	TaxModeInclusive TaxMode = "inclusive"
+	TaxModeExclusive TaxMode = "exclusive"
+)
+
+// DefaultTaxModeFor derives the onboarding default from the store
+// country (confirmed explicitly during signup, RFC-002 resolution).
+func DefaultTaxModeFor(country string) TaxMode {
+	if country == "US" || country == "CA" {
+		return TaxModeExclusive
+	}
+	return TaxModeInclusive
+}
 
 // StoreSettings is the merchant-configurable store profile.
 type StoreSettings struct {
@@ -60,6 +82,8 @@ type Merchant struct {
 	Name      string
 	Handle    string
 	Status    MerchantStatus
+	Country   string  // ISO 3166-1 alpha-2 (RFC-002)
+	TaxMode   TaxMode // near-immutable once orders exist
 	Settings  StoreSettings
 	CreatedAt time.Time
 	UpdatedAt time.Time
@@ -119,15 +143,29 @@ type User struct {
 	CreatedAt    time.Time
 }
 
-// NewMerchant constructs an active merchant with default settings. ID and
-// timestamps are assigned by the repository on save.
-func NewMerchant(name string) (*Merchant, error) {
+// NewMerchant constructs an active merchant with default settings. The
+// country drives the tax-mode default; an explicit mode (the onboarding
+// confirmation, RFC-002) overrides it. ID and timestamps are assigned by
+// the repository on save.
+func NewMerchant(name, country string, taxMode TaxMode) (*Merchant, error) {
 	if strings.TrimSpace(name) == "" {
 		return nil, ErrEmptyName
+	}
+	country = strings.ToUpper(strings.TrimSpace(country))
+	if len(country) != 2 {
+		return nil, ErrBadCountry
+	}
+	if taxMode == "" {
+		taxMode = DefaultTaxModeFor(country)
+	}
+	if taxMode != TaxModeInclusive && taxMode != TaxModeExclusive {
+		return nil, ErrBadTaxMode
 	}
 	m := &Merchant{
 		Name:     strings.TrimSpace(name),
 		Status:   MerchantStatusActive,
+		Country:  country,
+		TaxMode:  taxMode,
 		Settings: DefaultStoreSettings(),
 	}
 	m.Handle = SlugifyHandle(m.Name)
@@ -264,6 +302,38 @@ type APIKey struct {
 // Revoked reports whether the key has been revoked.
 func (k *APIKey) Revoked() bool { return k.RevokedAt != nil }
 
+// TaxRate is a merchant-defined jurisdiction rate (RFC-002, ADR-012).
+type TaxRate struct {
+	ID                string
+	TenantID          string
+	Name              string
+	Country           string
+	Region            string
+	RateBps           int
+	AppliesToShipping bool
+	CreatedAt         time.Time
+}
+
+// NewTaxRate validates a jurisdiction rate. AppliesToShipping defaults
+// true (RFC-002 resolution: over-collection is recoverable).
+func NewTaxRate(tenantID, name, country, region string, rateBps int, appliesToShipping bool) (*TaxRate, error) {
+	if strings.TrimSpace(name) == "" {
+		return nil, ErrEmptyName
+	}
+	country = strings.ToUpper(strings.TrimSpace(country))
+	if len(country) != 2 {
+		return nil, ErrBadCountry
+	}
+	if rateBps < 0 || rateBps > 10000 {
+		return nil, ErrBadTaxRate
+	}
+	return &TaxRate{
+		TenantID: tenantID, Name: strings.TrimSpace(name), Country: country,
+		Region: strings.ToUpper(strings.TrimSpace(region)), RateBps: rateBps,
+		AppliesToShipping: appliesToShipping,
+	}, nil
+}
+
 // ShippingMethod is a merchant-defined flat rate (RFC-001, ADR-011).
 type ShippingMethod struct {
 	ID         string
@@ -318,6 +388,13 @@ type MerchantRepository interface {
 	ListAPIKeys(ctx context.Context, tenantID string) ([]*APIKey, error)
 	// RevokeAPIKey marks a key revoked, tenant-scoped; unknown is ErrNotFound.
 	RevokeAPIKey(ctx context.Context, tenantID, keyID string) error
+	// SaveNewTaxRate persists a jurisdiction rate for the tenant.
+	SaveNewTaxRate(ctx context.Context, r *TaxRate) (*TaxRate, error)
+	// ListTaxRates returns the tenant's rates (owner view and the public
+	// checkout read are the same list — rates hold no secrets).
+	ListTaxRates(ctx context.Context, tenantID string) ([]*TaxRate, error)
+	// DeleteTaxRate is tenant-scoped; unknown is ErrNotFound.
+	DeleteTaxRate(ctx context.Context, tenantID, id string) error
 	// SaveNewShippingMethod persists a flat rate for the tenant.
 	SaveNewShippingMethod(ctx context.Context, m *ShippingMethod) (*ShippingMethod, error)
 	// ListShippingMethods returns the tenant's methods (all when
