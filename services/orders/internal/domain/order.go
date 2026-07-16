@@ -45,6 +45,38 @@ type Item struct {
 	Qty        int64
 }
 
+// TaxSpec is the resolved jurisdiction rate applied to an order
+// (RFC-002): rate in basis points, whether it covers shipping, and the
+// store's pricing mode at order time.
+type TaxSpec struct {
+	Name              string
+	RateBps           int
+	AppliesToShipping bool
+	Inclusive         bool
+}
+
+// halfUp rounds n*bps/10000 (or the inclusive extraction) half-up.
+func halfUp(numerator, denominator int64) int64 {
+	return (numerator + denominator/2) / denominator
+}
+
+// computeTax returns the tax amount for the given bases. Exclusive: tax
+// is added on top. Inclusive: tax is the portion already inside the
+// price — the total does not change.
+func computeTax(itemsCents, shippingCents int64, t TaxSpec) int64 {
+	if t.RateBps <= 0 {
+		return 0
+	}
+	taxable := itemsCents
+	if t.AppliesToShipping {
+		taxable += shippingCents
+	}
+	if t.Inclusive {
+		return halfUp(taxable*int64(t.RateBps), int64(10000+t.RateBps))
+	}
+	return halfUp(taxable*int64(t.RateBps), 10000)
+}
+
 // Address is the structured shipping snapshot (RFC-001): what was true
 // at checkout, immutable afterwards.
 type Address struct {
@@ -71,12 +103,13 @@ func (a Address) Validate() error {
 // Cart is the buyer's aggregate. Its unguessable ID is the buyer's
 // capability — buyers carry no tenant claim; the cart carries the tenant.
 type Cart struct {
-	ID        string
-	TenantID  string
-	Currency  string
-	Items     []Item
-	CreatedAt time.Time
-	UpdatedAt time.Time
+	ID           string
+	TenantID     string
+	Currency     string
+	TaxInclusive bool // the store's pricing mode when the cart was created
+	Items        []Item
+	CreatedAt    time.Time
+	UpdatedAt    time.Time
 }
 
 // AddItem adds a snapshot line; adding the same variant again accumulates
@@ -128,6 +161,10 @@ type Order struct {
 	ShippingAddress  Address
 	ShippingMethod   string
 	ShippingCents    int64
+	TaxCents         int64
+	TaxName          string
+	TaxRateBps       int
+	TaxInclusive     bool
 	LocationID       string // POS: registering location; empty online
 	PaymentReference string
 	TrackingNumber   string
@@ -138,7 +175,7 @@ type Order struct {
 
 // NewPOSSale builds an in-person sale: an order born paid (ADR-010).
 // Buyer email is optional — cash buyers often give none.
-func NewPOSSale(tenantID, currency, email, locationID string, items []Item) (*Order, error) {
+func NewPOSSale(tenantID, currency, email, locationID string, items []Item, tax TaxSpec) (*Order, error) {
 	if len(items) == 0 {
 		return nil, ErrEmptyCart
 	}
@@ -156,7 +193,11 @@ func NewPOSSale(tenantID, currency, email, locationID string, items []Item) (*Or
 		Items:          items,
 		ShippingMethod: "in-store",
 		LocationID:     locationID,
-		TotalCents:     total,
+		TaxCents:       computeTax(total, 0, tax),
+		TaxName:        tax.Name,
+		TaxRateBps:     tax.RateBps,
+		TaxInclusive:   tax.Inclusive,
+		TotalCents:     totalWithTax(total, 0, tax),
 		Status:         OrderStatusPaid,
 	}, nil
 }
@@ -164,7 +205,7 @@ func NewPOSSale(tenantID, currency, email, locationID string, items []Item) (*Or
 // NewOrderFromCart converts a cart into a pending order. The entity
 // decides: empty carts, invalid emails, incomplete addresses, and a
 // missing shipping method are rejected. Total = items + shipping.
-func NewOrderFromCart(cart *Cart, email string, addr Address, shippingMethod string, shippingCents int64) (*Order, error) {
+func NewOrderFromCart(cart *Cart, email string, addr Address, shippingMethod string, shippingCents int64, tax TaxSpec) (*Order, error) {
 	if len(cart.Items) == 0 {
 		return nil, ErrEmptyCart
 	}
@@ -189,7 +230,11 @@ func NewOrderFromCart(cart *Cart, email string, addr Address, shippingMethod str
 		ShippingAddress: addr,
 		ShippingMethod:  strings.TrimSpace(shippingMethod),
 		ShippingCents:   shippingCents,
-		TotalCents:      cart.TotalCents() + shippingCents,
+		TaxCents:        computeTax(cart.TotalCents(), shippingCents, tax),
+		TaxName:         tax.Name,
+		TaxRateBps:      tax.RateBps,
+		TaxInclusive:    tax.Inclusive,
+		TotalCents:      totalWithTax(cart.TotalCents(), shippingCents, tax),
 		Status:          OrderStatusPending,
 	}, nil
 }
@@ -197,6 +242,16 @@ func NewOrderFromCart(cart *Cart, email string, addr Address, shippingMethod str
 // CanPay reports whether payment may be initialized for this order.
 func (o *Order) CanPay() bool {
 	return o.Status == OrderStatusPending
+}
+
+// totalWithTax: exclusive adds tax on top; inclusive leaves the total
+// unchanged (the tax already lives inside the prices).
+func totalWithTax(itemsCents, shippingCents int64, t TaxSpec) int64 {
+	total := itemsCents + shippingCents
+	if !t.Inclusive {
+		total += computeTax(itemsCents, shippingCents, t)
+	}
+	return total
 }
 
 // MarkPaid transitions pending → paid. The entity decides its own
@@ -319,7 +374,12 @@ func NewOrderPlacedEvent(o *Order, at time.Time) OrderPlacedEvent {
 
 // OrderPaidEvent is emitted when payment confirms; inventory consumes it to
 // decrement stock (#18).
+// Tax fields ride every money event (receipts render them).
 type OrderPaidEvent struct {
+	TaxCents     int64  `json:"tax_cents"`
+	TaxName      string `json:"tax_name"`
+	TaxRateBps   int    `json:"tax_rate_bps"`
+	TaxInclusive bool   `json:"tax_inclusive"`
 	// LocationID is set for POS sales: inventory deducts there instead
 	// of the default location (RFC-001 acceptance resolution).
 	LocationID string      `json:"location_id,omitempty"`
@@ -335,7 +395,7 @@ type OrderPaidEvent struct {
 
 // NewOrderPaidEvent builds the event from the persisted order.
 func NewOrderPaidEvent(o *Order, at time.Time) OrderPaidEvent {
-	return OrderPaidEvent{LocationID: o.LocationID, OrderID: o.ID, Number: o.Number, TenantID: o.TenantID, Email: o.Email, TotalCents: o.TotalCents, Currency: o.Currency, Items: eventItems(o), PaidAt: at}
+	return OrderPaidEvent{TaxCents: o.TaxCents, TaxName: o.TaxName, TaxRateBps: o.TaxRateBps, TaxInclusive: o.TaxInclusive, LocationID: o.LocationID, OrderID: o.ID, Number: o.Number, TenantID: o.TenantID, Email: o.Email, TotalCents: o.TotalCents, Currency: o.Currency, Items: eventItems(o), PaidAt: at}
 }
 
 func eventItems(o *Order) []EventItem {
@@ -381,7 +441,7 @@ type OrderRepository interface {
 	// transaction: order + items inserted, cart deleted, order_placed
 	// event recorded. The entity decides (empty cart, bad email,
 	// incomplete address, missing shipping).
-	PlaceOrderFromCart(ctx context.Context, cartID, email string, addr Address, shippingMethod string, shippingCents int64) (*Order, error)
+	PlaceOrderFromCart(ctx context.Context, cartID, email string, addr Address, shippingMethod string, shippingCents int64, tax TaxSpec) (*Order, error)
 	// MarkPaidIfPayable loads the order, lets the entity decide the
 	// transition, persists it with the provider payment reference, and
 	// records order_paid. Returns apperrors.ErrConflict when rejected.

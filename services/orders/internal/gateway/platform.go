@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"strings"
 	"time"
 
 	apperrors "github.com/jorge-sanchez/cloud-commerce/pkg/errors"
@@ -38,12 +39,69 @@ func (p *HTTPPlatform) ResolveStore(ctx context.Context, handle string) (service
 	var body struct {
 		ID       string `json:"id"`
 		Currency string `json:"currency"`
+		Country  string `json:"country"`
+		TaxMode  string `json:"tax_mode"`
 	}
 	err := p.getJSON(ctx, fmt.Sprintf("%s/v1/public/stores/%s", p.merchantsURL, url.PathEscape(handle)), &body)
 	if err != nil {
 		return service.StoreInfo{}, err
 	}
-	return service.StoreInfo{TenantID: body.ID, Currency: body.Currency}, nil
+	return service.StoreInfo{TenantID: body.ID, Currency: body.Currency, Country: body.Country, TaxInclusive: body.TaxMode == "inclusive"}, nil
+}
+
+// ResolveStoreMeta returns country and tax mode by tenant ID.
+func (p *HTTPPlatform) ResolveStoreMeta(ctx context.Context, tenantID string) (service.StoreInfo, error) {
+	var body struct {
+		ID       string `json:"id"`
+		Currency string `json:"currency"`
+		Country  string `json:"country"`
+		TaxMode  string `json:"tax_mode"`
+	}
+	err := p.getJSON(ctx, fmt.Sprintf("%s/v1/public/tenants/%s/store", p.merchantsURL, url.PathEscape(tenantID)), &body)
+	if err != nil {
+		return service.StoreInfo{}, err
+	}
+	return service.StoreInfo{TenantID: body.ID, Currency: body.Currency, Country: body.Country, TaxInclusive: body.TaxMode == "inclusive"}, nil
+}
+
+// ResolveTax matches the tenant's jurisdiction rates against a country
+// and optional region: exact country+region first, then country-wide.
+// No match is a zero rate (RFC-002: the merchant's responsibility).
+func (p *HTTPPlatform) ResolveTax(ctx context.Context, tenantID, country, region string) (service.TaxRate, error) {
+	var body struct {
+		Items []struct {
+			Name              string `json:"name"`
+			Country           string `json:"country"`
+			Region            string `json:"region"`
+			RateBps           int    `json:"rate_bps"`
+			AppliesToShipping bool   `json:"applies_to_shipping"`
+		} `json:"items"`
+	}
+	err := p.getJSON(ctx, fmt.Sprintf("%s/v1/public/tenants/%s/tax-rates",
+		p.merchantsURL, url.PathEscape(tenantID)), &body)
+	if err != nil {
+		return service.TaxRate{}, err
+	}
+	country = strings.ToUpper(country)
+	region = strings.ToUpper(region)
+	var countryWide *service.TaxRate
+	for _, r := range body.Items {
+		if r.Country != country {
+			continue
+		}
+		match := service.TaxRate{Name: r.Name, RateBps: r.RateBps, AppliesToShipping: r.AppliesToShipping}
+		if r.Region == region && region != "" {
+			return match, nil
+		}
+		if r.Region == "" && countryWide == nil {
+			m := match
+			countryWide = &m
+		}
+	}
+	if countryWide != nil {
+		return *countryWide, nil
+	}
+	return service.TaxRate{}, nil // zero rate
 }
 
 func (p *HTTPPlatform) GetActiveVariant(ctx context.Context, tenantID, variantID string) (service.VariantSnapshot, error) {

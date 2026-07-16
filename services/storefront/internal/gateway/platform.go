@@ -19,6 +19,7 @@ type Store struct {
 	Name     string `json:"name"`
 	Handle   string `json:"handle"`
 	Currency string `json:"currency"`
+	TaxMode  string `json:"tax_mode"`
 }
 
 // Variant is a purchasable option of a product.

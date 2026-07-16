@@ -46,6 +46,10 @@ type OrderResponse struct {
 	Currency        string          `json:"currency"`
 	ShippingMethod  string          `json:"shipping_method"`
 	ShippingCents   int64           `json:"shipping_cents"`
+	TaxCents        int64           `json:"tax_cents"`
+	TaxName         string          `json:"tax_name"`
+	TaxRateBps      int             `json:"tax_rate_bps"`
+	TaxInclusive    bool            `json:"tax_inclusive"`
 	LocationID      string          `json:"location_id"`
 	ShippingAddress AddressResponse `json:"shipping_address"`
 	Items           []ItemResponse  `json:"items"`

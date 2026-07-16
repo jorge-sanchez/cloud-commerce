@@ -55,7 +55,7 @@ func (f *fakeOrderRepo) ReplaceItems(_ context.Context, cart *domain.Cart) (*dom
 	return cart, nil
 }
 
-func (f *fakeOrderRepo) PlaceOrderFromCart(_ context.Context, _, _ string, _ domain.Address, _ string, _ int64) (*domain.Order, error) {
+func (f *fakeOrderRepo) PlaceOrderFromCart(_ context.Context, _, _ string, _ domain.Address, _ string, _ int64, _ domain.TaxSpec) (*domain.Order, error) {
 	return f.order, f.err
 }
 
@@ -104,6 +104,7 @@ type fakePlatform struct {
 	variantErr  error
 	shipping    ShippingMethod
 	shippingErr error
+	tax         TaxRate
 }
 
 func (f *fakePlatform) ResolveStore(_ context.Context, _ string) (StoreInfo, error) {
@@ -116,6 +117,14 @@ func (f *fakePlatform) GetActiveVariant(_ context.Context, _, _ string) (Variant
 
 func (f *fakePlatform) GetShippingMethod(_ context.Context, _, _ string) (ShippingMethod, error) {
 	return f.shipping, f.shippingErr
+}
+
+func (f *fakePlatform) ResolveTax(_ context.Context, _, _, _ string) (TaxRate, error) {
+	return f.tax, nil
+}
+
+func (f *fakePlatform) ResolveStoreMeta(_ context.Context, _ string) (StoreInfo, error) {
+	return f.store, f.storeErr
 }
 
 // ---------------------------------------------------------------------------

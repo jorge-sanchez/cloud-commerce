@@ -119,7 +119,7 @@ func TestPostgresOrderRepository_PlaceOrderFromCart_Valid_CreatesOrderDeletesCar
 	repo := NewPostgresOrderRepository(db, WithEventRecorder(outbox.NewRecorder()))
 	cart := cartWithItem(t, repo)
 
-	order, err := repo.PlaceOrderFromCart(context.Background(), cart.ID, "Buyer@Example.Test", intAddr(), "Standard", 500)
+	order, err := repo.PlaceOrderFromCart(context.Background(), cart.ID, "Buyer@Example.Test", intAddr(), "Standard", 500, domain.TaxSpec{})
 
 	require.NoError(t, err)
 	assert.Equal(t, domain.OrderStatusPending, order.Status)
@@ -142,7 +142,7 @@ func TestPostgresOrderRepository_PlaceOrderFromCart_EmptyCart_ValidationAndNothi
 	cart, err := repo.SaveNewCart(context.Background(), &domain.Cart{TenantID: tenantA, Currency: "PEN"})
 	require.NoError(t, err)
 
-	_, err = repo.PlaceOrderFromCart(context.Background(), cart.ID, "buyer@example.test", intAddr(), "Standard", 500)
+	_, err = repo.PlaceOrderFromCart(context.Background(), cart.ID, "buyer@example.test", intAddr(), "Standard", 500, domain.TaxSpec{})
 
 	var appErr *apperrors.AppError
 	require.ErrorAs(t, err, &appErr)
@@ -166,7 +166,7 @@ func TestPostgresOrderRepository_MarkPaidIfPayable_PendingThenRepeat_PaysOnceThe
 	db := openMigratedDB(t)
 	repo := NewPostgresOrderRepository(db, WithEventRecorder(outbox.NewRecorder()))
 	cart := cartWithItem(t, repo)
-	order, err := repo.PlaceOrderFromCart(context.Background(), cart.ID, "buyer@example.test", intAddr(), "Standard", 500)
+	order, err := repo.PlaceOrderFromCart(context.Background(), cart.ID, "buyer@example.test", intAddr(), "Standard", 500, domain.TaxSpec{})
 	require.NoError(t, err)
 
 	paid, err := repo.MarkPaidIfPayable(context.Background(), order.ID, "pi_test_ref")
@@ -198,7 +198,7 @@ func TestPostgresOrderRepository_MarkPaidIfPayable_UnknownOrder_ReturnsNotFound(
 func TestPostgresOrderRepository_GetByID_OtherTenantsOrder_ReturnsNotFound(t *testing.T) {
 	repo := NewPostgresOrderRepository(openMigratedDB(t))
 	cart := cartWithItem(t, repo)
-	order, err := repo.PlaceOrderFromCart(context.Background(), cart.ID, "buyer@example.test", intAddr(), "Standard", 500)
+	order, err := repo.PlaceOrderFromCart(context.Background(), cart.ID, "buyer@example.test", intAddr(), "Standard", 500, domain.TaxSpec{})
 	require.NoError(t, err)
 
 	_, err = repo.GetByID(context.Background(), tenantB, order.ID)
@@ -209,7 +209,7 @@ func TestPostgresOrderRepository_GetByID_OtherTenantsOrder_ReturnsNotFound(t *te
 func TestPostgresOrderRepository_ListByTenant_ReturnsOrdersWithItems(t *testing.T) {
 	repo := NewPostgresOrderRepository(openMigratedDB(t))
 	cart := cartWithItem(t, repo)
-	_, err := repo.PlaceOrderFromCart(context.Background(), cart.ID, "buyer@example.test", intAddr(), "Standard", 500)
+	_, err := repo.PlaceOrderFromCart(context.Background(), cart.ID, "buyer@example.test", intAddr(), "Standard", 500, domain.TaxSpec{})
 	require.NoError(t, err)
 
 	orders, total, err := repo.ListByTenant(context.Background(), tenantA, 1, 20)
@@ -228,7 +228,7 @@ func TestPostgresOrderRepository_FulfillIfFulfillable_PaidOrder_FulfillsWithTrac
 	db := openMigratedDB(t)
 	repo := NewPostgresOrderRepository(db, WithEventRecorder(outbox.NewRecorder()))
 	cart := cartWithItem(t, repo)
-	order, err := repo.PlaceOrderFromCart(context.Background(), cart.ID, "buyer@example.test", intAddr(), "Standard", 500)
+	order, err := repo.PlaceOrderFromCart(context.Background(), cart.ID, "buyer@example.test", intAddr(), "Standard", 500, domain.TaxSpec{})
 	require.NoError(t, err)
 	_, err = repo.MarkPaidIfPayable(context.Background(), order.ID, "pi_test_ref")
 	require.NoError(t, err)
@@ -249,7 +249,7 @@ func TestPostgresOrderRepository_FulfillIfFulfillable_PaidOrder_FulfillsWithTrac
 func TestPostgresOrderRepository_FulfillIfFulfillable_PendingOrder_Conflicts(t *testing.T) {
 	repo := NewPostgresOrderRepository(openMigratedDB(t))
 	cart := cartWithItem(t, repo)
-	order, err := repo.PlaceOrderFromCart(context.Background(), cart.ID, "buyer@example.test", intAddr(), "Standard", 500)
+	order, err := repo.PlaceOrderFromCart(context.Background(), cart.ID, "buyer@example.test", intAddr(), "Standard", 500, domain.TaxSpec{})
 	require.NoError(t, err)
 
 	_, err = repo.FulfillIfFulfillable(context.Background(), tenantA, order.ID, "", "")
@@ -265,7 +265,7 @@ func TestPostgresOrderRepository_SavePOSSale_Replayed_ReturnsOriginalOnce(t *tes
 	db := openMigratedDB(t)
 	repo := NewPostgresOrderRepository(db, WithEventRecorder(outbox.NewRecorder()))
 	sale, err := domain.NewPOSSale(tenantA, "PEN", "", "",
-		[]domain.Item{{VariantID: variant1, SKU: "TS-S", Title: "T-Shirt", PriceCents: 4990, Qty: 2}})
+		[]domain.Item{{VariantID: variant1, SKU: "TS-S", Title: "T-Shirt", PriceCents: 4990, Qty: 2}}, domain.TaxSpec{})
 	require.NoError(t, err)
 
 	first, err := repo.SavePOSSale(context.Background(), tenantA, "sale-abc", sale)

@@ -18,8 +18,17 @@ type POSLine struct {
 
 // StoreInfo is what checkout needs to know about a store.
 type StoreInfo struct {
-	TenantID string
-	Currency string
+	TenantID     string
+	Currency     string
+	Country      string
+	TaxInclusive bool
+}
+
+// TaxRate is a resolved jurisdiction rate (zero-valued = no tax).
+type TaxRate struct {
+	Name              string
+	RateBps           int
+	AppliesToShipping bool
 }
 
 // VariantSnapshot is the priced line captured when a buyer adds an item.
@@ -48,6 +57,12 @@ type Platform interface {
 	GetActiveVariant(ctx context.Context, tenantID, variantID string) (VariantSnapshot, error)
 	// GetShippingMethod resolves an active flat rate for the tenant.
 	GetShippingMethod(ctx context.Context, tenantID, methodID string) (ShippingMethod, error)
+	// ResolveTax matches the tenant's rates against a jurisdiction; a
+	// zero-valued result means no tax (RFC-002).
+	ResolveTax(ctx context.Context, tenantID, country, region string) (TaxRate, error)
+	// ResolveStoreMeta returns store country and tax mode by tenant (POS
+	// taxes at the store's own jurisdiction).
+	ResolveStoreMeta(ctx context.Context, tenantID string) (StoreInfo, error)
 }
 
 // OrderService is the application-service port consumed by the handlers.
@@ -88,7 +103,7 @@ func (s *orderService) CreateCart(ctx context.Context, storeHandle string) (*dom
 	if err != nil {
 		return nil, err
 	}
-	return s.repo.SaveNewCart(ctx, &domain.Cart{TenantID: store.TenantID, Currency: store.Currency})
+	return s.repo.SaveNewCart(ctx, &domain.Cart{TenantID: store.TenantID, Currency: store.Currency, TaxInclusive: store.TaxInclusive})
 }
 
 func (s *orderService) GetCart(ctx context.Context, cartID string) (*domain.Cart, error) {
@@ -136,9 +151,16 @@ func (s *orderService) Checkout(ctx context.Context, cartID, email string, addr 
 	if err != nil {
 		return nil, err
 	}
+	// Tax follows the shipping address (RFC-002); the cart carries the
+	// store's pricing mode from creation.
+	rate, err := s.platform.ResolveTax(ctx, cart.TenantID, addr.Country, addr.Region)
+	if err != nil {
+		return nil, err
+	}
+	tax := domain.TaxSpec{Name: rate.Name, RateBps: rate.RateBps, AppliesToShipping: rate.AppliesToShipping, Inclusive: cart.TaxInclusive}
 	// The entity validates inside the repository transaction; the placed
 	// event is recorded there too (ADR-002).
-	return s.repo.PlaceOrderFromCart(ctx, cartID, email, addr, method.Name, method.PriceCents)
+	return s.repo.PlaceOrderFromCart(ctx, cartID, email, addr, method.Name, method.PriceCents, tax)
 }
 
 func (s *orderService) ListOrders(ctx context.Context, tenantID string, page, pageSize int) ([]*domain.Order, int, error) {
@@ -157,7 +179,17 @@ func (s *orderService) RecordPOSSale(ctx context.Context, tenantID, clientSaleID
 			PriceCents: snap.PriceCents, Qty: l.Qty,
 		})
 	}
-	sale, err := domain.NewPOSSale(tenantID, currency, email, locationID, items) // entity decides
+	// POS taxes at the store's own jurisdiction (RFC-002).
+	meta, err := s.platform.ResolveStoreMeta(ctx, tenantID)
+	if err != nil {
+		return nil, err
+	}
+	rate, err := s.platform.ResolveTax(ctx, tenantID, meta.Country, "")
+	if err != nil {
+		return nil, err
+	}
+	tax := domain.TaxSpec{Name: rate.Name, RateBps: rate.RateBps, AppliesToShipping: rate.AppliesToShipping, Inclusive: meta.TaxInclusive}
+	sale, err := domain.NewPOSSale(tenantID, currency, email, locationID, items, tax) // entity decides
 	if err != nil {
 		return nil, apperrors.ErrValidation.Wrap(err)
 	}
