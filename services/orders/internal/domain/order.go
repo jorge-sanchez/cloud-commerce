@@ -107,6 +107,29 @@ type Order struct {
 	UpdatedAt        time.Time
 }
 
+// NewPOSSale builds an in-person sale: an order born paid (ADR-010).
+// Buyer email is optional — cash buyers often give none.
+func NewPOSSale(tenantID, currency, email string, items []Item) (*Order, error) {
+	if len(items) == 0 {
+		return nil, ErrEmptyCart
+	}
+	var total int64
+	for _, it := range items {
+		if it.Qty <= 0 {
+			return nil, fmt.Errorf("%w: %d", ErrBadQty, it.Qty)
+		}
+		total += it.PriceCents * it.Qty
+	}
+	return &Order{
+		TenantID:   tenantID,
+		Email:      strings.ToLower(strings.TrimSpace(email)),
+		Currency:   currency,
+		Items:      items,
+		TotalCents: total,
+		Status:     OrderStatusPaid,
+	}, nil
+}
+
 // NewOrderFromCart converts a cart into a pending order. The entity
 // decides: empty carts and invalid emails are rejected.
 func NewOrderFromCart(cart *Cart, email string) (*Order, error) {
@@ -330,6 +353,10 @@ type OrderRepository interface {
 	// GetPublicByID returns the order by unguessable ID alone — the
 	// buyer's capability from checkout (see Cart).
 	GetPublicByID(ctx context.Context, orderID string) (*Order, error)
+	// SavePOSSale persists an in-person sale as an already-paid order in
+	// one transaction (items + order_paid event), idempotent on the
+	// client-generated sale ID: a replay returns the original order.
+	SavePOSSale(ctx context.Context, tenantID, clientSaleID string, order *Order) (*Order, error)
 	// ListByTenant returns one page of orders (with items), newest first.
 	ListByTenant(ctx context.Context, tenantID string, page, pageSize int) ([]*Order, int, error)
 	// GetSalesSummary aggregates revenue per day and top variants over the

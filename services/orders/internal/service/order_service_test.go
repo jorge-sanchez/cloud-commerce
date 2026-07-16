@@ -30,6 +30,7 @@ import (
 var _ domain.OrderRepository = (*fakeOrderRepo)(nil)
 
 type fakeOrderRepo struct {
+	posSales []*domain.Order
 	carts    []*domain.Cart
 	replaced []*domain.Cart
 	cart     *domain.Cart
@@ -72,6 +73,14 @@ func (f *fakeOrderRepo) GetByID(_ context.Context, _, _ string) (*domain.Order, 
 
 func (f *fakeOrderRepo) GetPublicByID(_ context.Context, _ string) (*domain.Order, error) {
 	return f.order, f.err
+}
+
+func (f *fakeOrderRepo) SavePOSSale(_ context.Context, tenantID, _ string, order *domain.Order) (*domain.Order, error) {
+	stored := *order
+	stored.ID = "order-pos-001"
+	stored.TenantID = tenantID
+	f.posSales = append(f.posSales, &stored)
+	return &stored, f.err
 }
 
 func (f *fakeOrderRepo) FulfillIfFulfillable(_ context.Context, _, _, _, _ string) (*domain.Order, error) {

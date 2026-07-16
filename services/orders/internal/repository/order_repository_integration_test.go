@@ -1,7 +1,7 @@
 //go:build integration
 
-// Test Budget: 5 distinct behaviors × 2 = 10 max integration tests
-// Actual: 10
+// Test Budget: 6 distinct behaviors × 2 = 12 max integration tests
+// Actual: 11
 //
 // Behavior 1: cart round-trip — SaveNewCart + ReplaceItems + GetCart;
 //
@@ -251,4 +251,31 @@ func TestPostgresOrderRepository_FulfillIfFulfillable_PendingOrder_Conflicts(t *
 	_, err = repo.FulfillIfFulfillable(context.Background(), tenantA, order.ID, "", "")
 
 	require.ErrorIs(t, err, apperrors.ErrConflict, "an unpaid order must not be fulfillable")
+}
+
+// ---------------------------------------------------------------------------
+// Behavior 6 (issue #38): POS sales are born paid and idempotent
+// ---------------------------------------------------------------------------
+
+func TestPostgresOrderRepository_SavePOSSale_Replayed_ReturnsOriginalOnce(t *testing.T) {
+	db := openMigratedDB(t)
+	repo := NewPostgresOrderRepository(db, WithEventRecorder(outbox.NewRecorder()))
+	sale, err := domain.NewPOSSale(tenantA, "PEN", "",
+		[]domain.Item{{VariantID: variant1, SKU: "TS-S", Title: "T-Shirt", PriceCents: 4990, Qty: 2}})
+	require.NoError(t, err)
+
+	first, err := repo.SavePOSSale(context.Background(), tenantA, "sale-abc", sale)
+	require.NoError(t, err)
+	assert.Equal(t, domain.OrderStatusPaid, first.Status, "POS sales are born paid")
+
+	replay, err := repo.SavePOSSale(context.Background(), tenantA, "sale-abc", sale)
+	require.NoError(t, err)
+	assert.Equal(t, first.ID, replay.ID, "the queued retry must return the original sale")
+
+	var orders, paidEvents int
+	require.NoError(t, db.QueryRow(`SELECT COUNT(*) FROM orders`).Scan(&orders))
+	require.NoError(t, db.QueryRow(
+		`SELECT COUNT(*) FROM outbox WHERE event_type = $1`, domain.OrderPaidEventType).Scan(&paidEvents))
+	assert.Equal(t, 1, orders, "a replay must not create a second order")
+	assert.Equal(t, 1, paidEvents, "a replay must not emit a second paid event")
 }
