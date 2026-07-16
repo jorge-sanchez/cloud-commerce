@@ -38,6 +38,7 @@ func main() {
 	)
 	h, err := handler.NewStorefrontHandler(platform, handler.Config{
 		OrdersURL:    envOr("ORDERS_URL", "http://localhost:8083"),
+		MerchantsURL: envOr("MERCHANTS_URL", "http://localhost:8081"),
 		StripePubKey: os.Getenv("STRIPE_PUBLISHABLE_KEY"),
 	})
 	if err != nil {

@@ -37,18 +37,19 @@ import (
 var _ domain.StockRepository = (*fakeStockRepo)(nil)
 
 type fakeStockRepo struct {
-	reserved       []domain.StockDeduction
-	reservedOrder  string
-	committedOrder string
-	restored       []domain.StockDeduction
-	deducted       []domain.StockDeduction
-	deductTenant   string
-	deductEventID  string
-	initialized    []domain.StockInit
-	initTenant     string
-	initLocation   string
-	savedLocations []*domain.Location
-	err            error
+	committedLocation string
+	reserved          []domain.StockDeduction
+	reservedOrder     string
+	committedOrder    string
+	restored          []domain.StockDeduction
+	deducted          []domain.StockDeduction
+	deductTenant      string
+	deductEventID     string
+	initialized       []domain.StockInit
+	initTenant        string
+	initLocation      string
+	savedLocations    []*domain.Location
+	err               error
 }
 
 func (f *fakeStockRepo) EnsureDefaultLocation(_ context.Context, tenantID string) (*domain.Location, error) {
@@ -93,8 +94,9 @@ func (f *fakeStockRepo) CreateReservation(_ context.Context, tenantID, eventID, 
 	return f.err
 }
 
-func (f *fakeStockRepo) CommitReservationOrDeduct(_ context.Context, tenantID, eventID, orderID string, items []domain.StockDeduction) error {
+func (f *fakeStockRepo) CommitReservationOrDeduct(_ context.Context, tenantID, eventID, orderID, locationID string, items []domain.StockDeduction) error {
 	f.committedOrder = orderID
+	f.committedLocation = locationID
 	f.deductTenant = tenantID
 	f.deductEventID = eventID
 	f.deducted = append(f.deducted, items...)
@@ -232,8 +234,9 @@ func TestStockService_ProcessEvent_OrderPaid_DeductsDedupedByEnvelopeID(t *testi
 	repo := &fakeStockRepo{}
 	svc := NewStockService(repo)
 	payload := map[string]any{
-		"order_id": "order-001",
-		"items":    []map[string]any{{"variant_id": "var-001", "qty": 2}},
+		"order_id":    "order-001",
+		"location_id": "loc-pos-1",
+		"items":       []map[string]any{{"variant_id": "var-001", "qty": 2}},
 	}
 	env, err := events.New("tenant-001", "order-001", OrdersOrderPaidType, time.Now(), payload)
 	require.NoError(t, err)
@@ -244,6 +247,7 @@ func TestStockService_ProcessEvent_OrderPaid_DeductsDedupedByEnvelopeID(t *testi
 	assert.Equal(t, "tenant-001", repo.deductTenant)
 	assert.Equal(t, "envelope-001", repo.deductEventID, "dedupe must key on the envelope ID")
 	assert.Equal(t, "order-001", repo.committedOrder, "payment must commit the order's reservation")
+	assert.Equal(t, "loc-pos-1", repo.committedLocation, "POS location must reach the deduction (RFC-001)")
 	require.Len(t, repo.deducted, 1, "one deduction per order line")
 	assert.Equal(t, int64(2), repo.deducted[0].Qty)
 }

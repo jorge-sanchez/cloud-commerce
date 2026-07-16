@@ -237,10 +237,10 @@ func TestPostgresStockRepository_ReserveThenCommit_DeductsOnceAndDedupes(t *test
 		"eeeeeeee-1111-0000-0000-000000000001", orderID, items, time.Now().Add(domain.ReservationTTL)))
 
 	require.NoError(t, repo.CommitReservationOrDeduct(context.Background(), tenantA,
-		"eeeeeeee-1111-0000-0000-000000000002", orderID, items))
+		"eeeeeeee-1111-0000-0000-000000000002", orderID, "", items))
 	// Replay of the paid event must not deduct again.
 	require.NoError(t, repo.CommitReservationOrDeduct(context.Background(), tenantA,
-		"eeeeeeee-1111-0000-0000-000000000002", orderID, items))
+		"eeeeeeee-1111-0000-0000-000000000002", orderID, "", items))
 
 	levels, _, err := repo.ListStockByTenant(context.Background(), tenantA, 1, 20)
 	require.NoError(t, err)

@@ -176,8 +176,9 @@ type StockRepository interface {
 	CreateReservation(ctx context.Context, tenantID, eventID, orderID string, items []StockDeduction, expiresAt time.Time) error
 	// CommitReservationOrDeduct consumes the order's active reservation on
 	// payment (deducting on_hand); orders without one fall back to the
-	// clamped deduction. Deduped by event ID.
-	CommitReservationOrDeduct(ctx context.Context, tenantID, eventID, orderID string, items []StockDeduction) error
+	// clamped deduction. locationID targets a specific location (POS,
+	// RFC-001); empty means the tenant default. Deduped by event ID.
+	CommitReservationOrDeduct(ctx context.Context, tenantID, eventID, orderID, locationID string, items []StockDeduction) error
 	// ReleaseExpired releases active reservations past their TTL and
 	// returns how many were swept.
 	ReleaseExpired(ctx context.Context) (int, error)

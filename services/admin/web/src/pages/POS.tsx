@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
-import { ApiError, catalog, merchants, orders } from "../api";
+import { ApiError, catalog, inventory, merchants, orders } from "../api";
+import type { ListLocationsResponse, LocationResponse } from "../types/inventory";
 import type { ListProductsResponse, ProductResponse, VariantResponse } from "../types/catalog";
 import type { StoreResponse } from "../types/merchants";
 import type { OrderResponse } from "../types/orders";
@@ -7,11 +8,13 @@ import type { OrderResponse } from "../types/orders";
 // Offline queue (ADR-010): sales wait in localStorage with a client-generated
 // ID; the endpoint is idempotent on it, so flushing retries is always safe.
 const QUEUE_KEY = "cc_pos_queue";
+const LOCATION_KEY = "cc_pos_location"; // this register's location (RFC-001)
 
 interface QueuedSale {
   client_sale_id: string;
   currency: string;
   email: string;
+  location_id: string;
   lines: { variant_id: string; qty: number }[];
 }
 
@@ -34,6 +37,8 @@ export default function POS() {
   const [store, setStore] = useState<StoreResponse | null>(null);
   const [cart, setCart] = useState<CartLine[]>([]);
   const [queued, setQueued] = useState(readQueue().length);
+  const [locations, setLocations] = useState<LocationResponse[]>([]);
+  const [locationId, setLocationId] = useState(localStorage.getItem(LOCATION_KEY) ?? "");
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
 
@@ -59,6 +64,14 @@ export default function POS() {
 
   useEffect(() => {
     merchants.get<StoreResponse>("/v1/store").then(setStore);
+    inventory.get<ListLocationsResponse>("/v1/locations").then((r) => {
+      setLocations(r.items);
+      if (!localStorage.getItem(LOCATION_KEY) && r.items.length > 0) {
+        const def = r.items.find((l) => l.is_default) ?? r.items[0];
+        setLocationId(def.id);
+        localStorage.setItem(LOCATION_KEY, def.id);
+      }
+    });
     catalog
       .get<ListProductsResponse>("/v1/products?page_size=50")
       .then((r) => setProducts(r.items.filter((p) => p.status === "active")));
@@ -85,6 +98,7 @@ export default function POS() {
       client_sale_id: crypto.randomUUID(),
       currency: store.currency,
       email: "",
+      location_id: locationId,
       lines: cart.map((l) => ({ variant_id: l.variant.id, qty: l.qty })),
     };
     setError("");
@@ -103,6 +117,22 @@ export default function POS() {
   return (
     <section>
       <h2>Point of sale</h2>
+      <label>
+        Register location:{" "}
+        <select
+          value={locationId}
+          onChange={(e) => {
+            setLocationId(e.target.value);
+            localStorage.setItem(LOCATION_KEY, e.target.value);
+          }}
+        >
+          {locations.map((l) => (
+            <option key={l.id} value={l.id}>
+              {l.name}
+            </option>
+          ))}
+        </select>
+      </label>
       {queued > 0 && (
         <p className="hint">
           {queued} sale(s) queued offline — <button className="linklike" onClick={flush}>sync now</button>

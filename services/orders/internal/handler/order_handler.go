@@ -91,6 +91,7 @@ type posSaleRequest struct {
 	ClientSaleID string           `json:"client_sale_id" binding:"required"`
 	Currency     string           `json:"currency" binding:"required"`
 	Email        string           `json:"email"`
+	LocationID   string           `json:"location_id"`
 	Lines        []posLineRequest `json:"lines" binding:"required,min=1"`
 }
 
@@ -104,7 +105,7 @@ func (h *OrderHandler) RecordPOSSale(c *gin.Context) {
 	for _, l := range req.Lines {
 		lines = append(lines, service.POSLine{VariantID: l.VariantID, Qty: l.Qty})
 	}
-	order, err := h.svc.RecordPOSSale(c.Request.Context(), auth.TenantID(c), req.ClientSaleID, req.Currency, req.Email, lines)
+	order, err := h.svc.RecordPOSSale(c.Request.Context(), auth.TenantID(c), req.ClientSaleID, req.Currency, req.Email, req.LocationID, lines)
 	if err != nil {
 		apperrors.RespondError(c, err)
 		return
@@ -221,8 +222,21 @@ func (h *OrderHandler) RemoveItem(c *gin.Context) {
 	c.JSON(http.StatusOK, toCartResponse(cart))
 }
 
+type addressRequest struct {
+	Name    string `json:"name" binding:"required"`
+	Line1   string `json:"line1" binding:"required"`
+	Line2   string `json:"line2"`
+	City    string `json:"city" binding:"required"`
+	Region  string `json:"region"`
+	Postal  string `json:"postal"`
+	Country string `json:"country" binding:"required"`
+	Phone   string `json:"phone"`
+}
+
 type checkoutRequest struct {
-	Email string `json:"email" binding:"required"`
+	Email            string         `json:"email" binding:"required"`
+	ShippingAddress  addressRequest `json:"shipping_address" binding:"required"`
+	ShippingMethodID string         `json:"shipping_method_id" binding:"required"`
 }
 
 func (h *OrderHandler) Checkout(c *gin.Context) {
@@ -232,7 +246,11 @@ func (h *OrderHandler) Checkout(c *gin.Context) {
 		return
 	}
 
-	order, err := h.svc.Checkout(c.Request.Context(), c.Param("id"), req.Email)
+	order, err := h.svc.Checkout(c.Request.Context(), c.Param("id"), req.Email, domain.Address{
+		Name: req.ShippingAddress.Name, Line1: req.ShippingAddress.Line1, Line2: req.ShippingAddress.Line2,
+		City: req.ShippingAddress.City, Region: req.ShippingAddress.Region, Postal: req.ShippingAddress.Postal,
+		Country: req.ShippingAddress.Country, Phone: req.ShippingAddress.Phone,
+	}, req.ShippingMethodID)
 	if err != nil {
 		apperrors.RespondError(c, err)
 		return
@@ -298,6 +316,14 @@ func toOrderResponse(o *domain.Order) OrderResponse {
 		Currency:       o.Currency,
 		Items:          toItemResponses(o.Items),
 		TotalCents:     o.TotalCents,
+		ShippingMethod: o.ShippingMethod,
+		ShippingCents:  o.ShippingCents,
+		LocationID:     o.LocationID,
+		ShippingAddress: AddressResponse{
+			Name: o.ShippingAddress.Name, Line1: o.ShippingAddress.Line1, Line2: o.ShippingAddress.Line2,
+			City: o.ShippingAddress.City, Region: o.ShippingAddress.Region, Postal: o.ShippingAddress.Postal,
+			Country: o.ShippingAddress.Country, Phone: o.ShippingAddress.Phone,
+		},
 		Status:         string(o.Status),
 		TrackingNumber: o.TrackingNumber,
 		Carrier:        o.Carrier,
