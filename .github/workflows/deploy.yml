@@ -64,12 +64,6 @@ jobs:
           # identity issuer (ADR-006) — receives the private key. The admin
           # SPA host has no database and no secrets at all.
           SECRET_FLAG=""
-          if [ "${{ inputs.service }}" = "storefront" ]; then
-            ENV_VARS="$ENV_VARS,MERCHANTS_URL=https://merchants-bjm36sbwlq-uc.a.run.app"
-            ENV_VARS="$ENV_VARS,CATALOG_URL=https://catalog-bjm36sbwlq-uc.a.run.app"
-            ENV_VARS="$ENV_VARS,ORDERS_URL=https://orders-bjm36sbwlq-uc.a.run.app"
-            ENV_VARS="$ENV_VARS,STRIPE_PUBLISHABLE_KEY=${{ vars.STRIPE_PUBLISHABLE_KEY }}"
-          fi
           if [ "${{ inputs.service }}" != "admin" ] && [ "${{ inputs.service }}" != "storefront" ]; then
             SECRETS="DATABASE_URL=${{ inputs.service }}-database-url:latest"
             SECRETS="$SECRETS,OUTBOX_DRAIN_TOKEN=${{ inputs.service }}-drain-token:latest"
@@ -93,6 +87,12 @@ jobs:
               ENV_VARS="$ENV_VARS,CORS_ALLOWED_ORIGINS=https://admin-bjm36sbwlq-uc.a.run.app"
               ;;
           esac
+          if [ "${{ inputs.service }}" = "storefront" ]; then
+            ENV_VARS="$ENV_VARS,MERCHANTS_URL=https://merchants-bjm36sbwlq-uc.a.run.app"
+            ENV_VARS="$ENV_VARS,CATALOG_URL=https://catalog-bjm36sbwlq-uc.a.run.app"
+            ENV_VARS="$ENV_VARS,ORDERS_URL=https://orders-bjm36sbwlq-uc.a.run.app"
+            ENV_VARS="$ENV_VARS,STRIPE_PUBLISHABLE_KEY=${{ vars.STRIPE_PUBLISHABLE_KEY }}"
+          fi
           if [ "${{ inputs.service }}" = "catalog" ]; then
             # Relay transport: publish outbox envelopes to Pub/Sub (ADR-002).
             ENV_VARS="$ENV_VARS,PUBSUB_TOPIC=catalog-events"
