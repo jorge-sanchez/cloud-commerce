@@ -325,7 +325,7 @@ Types: `feat`, `fix`, `refactor`, `test`, `docs`, `chore`. Scope is the service 
 
 **PR descriptions** must include `Closes #<issue>` (the issue closes automatically on merge — do not close it manually).
 
-**Architecture decisions** are recorded as ADRs in `docs/adrs/` (see the template there).
+**Architecture decisions** are recorded as ADRs in `docs/adrs/` (see the template there). **Feature designs** that span services or change wire/event contracts get an RFC in `docs/rfcs/` (template: RFC-000) *before* implementation — RFCs record the exploration, ADRs the discrete decisions they spawn.
 
 ---
 
