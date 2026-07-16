@@ -1,6 +1,6 @@
 # RFC-001: Shipping addresses, methods, and costs at checkout
 
-**Status**: Accepted (2026-07-16)
+**Status**: Implemented (2026-07-16, PRs #50–#53)
 **Author(s)**: Claude (with Jorge Sanchez)
 **Date**: 2026-07-16
 **Related**: Discussion #47 (Tier 1, item 1); ADR-008 (provider-port
