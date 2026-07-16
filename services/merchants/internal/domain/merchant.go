@@ -262,6 +262,27 @@ type APIKey struct {
 // Revoked reports whether the key has been revoked.
 func (k *APIKey) Revoked() bool { return k.RevokedAt != nil }
 
+// ShippingMethod is a merchant-defined flat rate (RFC-001, ADR-011).
+type ShippingMethod struct {
+	ID         string
+	TenantID   string
+	Name       string
+	PriceCents int64
+	Active     bool
+	CreatedAt  time.Time
+}
+
+// NewShippingMethod validates a flat rate.
+func NewShippingMethod(tenantID, name string, priceCents int64) (*ShippingMethod, error) {
+	if strings.TrimSpace(name) == "" {
+		return nil, ErrEmptyName
+	}
+	if priceCents < 0 {
+		return nil, ErrNegativeShipping
+	}
+	return &ShippingMethod{TenantID: tenantID, Name: strings.TrimSpace(name), PriceCents: priceCents, Active: true}, nil
+}
+
 // MerchantRepository is the persistence port for the Merchant aggregate.
 type MerchantRepository interface {
 	// SaveNewWithOwner persists the merchant and its owner user atomically
@@ -295,6 +316,13 @@ type MerchantRepository interface {
 	ListAPIKeys(ctx context.Context, tenantID string) ([]*APIKey, error)
 	// RevokeAPIKey marks a key revoked, tenant-scoped; unknown is ErrNotFound.
 	RevokeAPIKey(ctx context.Context, tenantID, keyID string) error
+	// SaveNewShippingMethod persists a flat rate for the tenant.
+	SaveNewShippingMethod(ctx context.Context, m *ShippingMethod) (*ShippingMethod, error)
+	// ListShippingMethods returns the tenant's methods (all when
+	// activeOnly is false — owner view; active only for buyers).
+	ListShippingMethods(ctx context.Context, tenantID string, activeOnly bool) ([]*ShippingMethod, error)
+	// DeactivateShippingMethod is tenant-scoped; unknown is ErrNotFound.
+	DeactivateShippingMethod(ctx context.Context, tenantID, id string) error
 	// GetAPIKeyByHash resolves an unrevoked key hash — pre-tenant like
 	// GetUserByEmail: the key is how an integration discovers the tenant.
 	GetAPIKeyByHash(ctx context.Context, keyHash string) (*APIKey, error)

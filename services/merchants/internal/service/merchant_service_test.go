@@ -36,6 +36,7 @@ import (
 var _ domain.MerchantRepository = (*fakeMerchantRepo)(nil)
 
 type fakeMerchantRepo struct {
+	savedShipping  []*domain.ShippingMethod
 	savedKeys      []*domain.APIKey
 	keyByHash      *domain.APIKey
 	savedMerchants []*domain.Merchant
@@ -86,6 +87,21 @@ func (f *fakeMerchantRepo) GetAPIKeyByHash(_ context.Context, _ string) (*domain
 		return nil, apperrors.ErrNotFound
 	}
 	return f.keyByHash, nil
+}
+
+func (f *fakeMerchantRepo) SaveNewShippingMethod(_ context.Context, m *domain.ShippingMethod) (*domain.ShippingMethod, error) {
+	stored := *m
+	stored.ID = "ship-001"
+	f.savedShipping = append(f.savedShipping, &stored)
+	return &stored, nil
+}
+
+func (f *fakeMerchantRepo) ListShippingMethods(_ context.Context, _ string, _ bool) ([]*domain.ShippingMethod, error) {
+	return f.savedShipping, f.getErr
+}
+
+func (f *fakeMerchantRepo) DeactivateShippingMethod(_ context.Context, _, _ string) error {
+	return f.getErr
 }
 
 func (f *fakeMerchantRepo) GetByHandle(_ context.Context, _ string) (*domain.Merchant, error) {

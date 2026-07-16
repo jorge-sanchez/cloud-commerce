@@ -35,6 +35,63 @@ func (h *MerchantHandler) RegisterPublicRoutes(rg *gin.RouterGroup) {
 // group with cors.Public() (no credentials, any origin).
 func (h *MerchantHandler) RegisterStorefrontRoutes(rg *gin.RouterGroup) {
 	rg.GET("/public/stores/:handle", h.PublicStore)
+	rg.GET("/public/tenants/:tenantId/shipping-methods", h.PublicShippingMethods)
+}
+
+func toShippingMethodResponses(methods []*domain.ShippingMethod) []ShippingMethodResponse {
+	items := make([]ShippingMethodResponse, 0, len(methods))
+	for _, m := range methods {
+		items = append(items, ShippingMethodResponse{ID: m.ID, Name: m.Name, PriceCents: m.PriceCents, Active: m.Active})
+	}
+	return items
+}
+
+// PublicShippingMethods is the checkout/storefront read: active only.
+func (h *MerchantHandler) PublicShippingMethods(c *gin.Context) {
+	methods, err := h.svc.PublicShippingMethods(c.Request.Context(), c.Param("tenantId"))
+	if err != nil {
+		apperrors.RespondError(c, err)
+		return
+	}
+	items := toShippingMethodResponses(methods)
+	c.JSON(http.StatusOK, ListShippingMethodsResponse{Items: items, Total: len(items), Page: 1, PageSize: len(items)})
+}
+
+type createShippingMethodRequest struct {
+	Name       string `json:"name" binding:"required"`
+	PriceCents int64  `json:"price_cents"`
+}
+
+func (h *MerchantHandler) CreateShippingMethod(c *gin.Context) {
+	var req createShippingMethodRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		apperrors.RespondError(c, apperrors.ErrValidation.Wrap(err))
+		return
+	}
+	m, err := h.svc.CreateShippingMethod(c.Request.Context(), auth.TenantID(c), actorRole(c), req.Name, req.PriceCents)
+	if err != nil {
+		apperrors.RespondError(c, err)
+		return
+	}
+	c.JSON(http.StatusCreated, ShippingMethodResponse{ID: m.ID, Name: m.Name, PriceCents: m.PriceCents, Active: m.Active})
+}
+
+func (h *MerchantHandler) ListShippingMethods(c *gin.Context) {
+	methods, err := h.svc.ListShippingMethods(c.Request.Context(), auth.TenantID(c), actorRole(c))
+	if err != nil {
+		apperrors.RespondError(c, err)
+		return
+	}
+	items := toShippingMethodResponses(methods)
+	c.JSON(http.StatusOK, ListShippingMethodsResponse{Items: items, Total: len(items), Page: 1, PageSize: len(items)})
+}
+
+func (h *MerchantHandler) DeactivateShippingMethod(c *gin.Context) {
+	if err := h.svc.DeactivateShippingMethod(c.Request.Context(), auth.TenantID(c), actorRole(c), c.Param("id")); err != nil {
+		apperrors.RespondError(c, err)
+		return
+	}
+	c.Status(http.StatusNoContent)
 }
 
 type createAPIKeyRequest struct {
@@ -125,6 +182,9 @@ func (h *MerchantHandler) RegisterAuthedRoutes(rg *gin.RouterGroup) {
 	rg.POST("/api-keys", h.CreateAPIKey)
 	rg.GET("/api-keys", h.ListAPIKeys)
 	rg.DELETE("/api-keys/:id", h.RevokeAPIKey)
+	rg.POST("/shipping-methods", h.CreateShippingMethod)
+	rg.GET("/shipping-methods", h.ListShippingMethods)
+	rg.DELETE("/shipping-methods/:id", h.DeactivateShippingMethod)
 }
 
 // actorRole reads the verified role claim. Authorization decisions live in
