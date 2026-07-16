@@ -364,6 +364,59 @@ func (r *PostgresMerchantRepository) GetAPIKeyByHash(ctx context.Context, keyHas
 	return &k, nil
 }
 
+func (r *PostgresMerchantRepository) SaveNewShippingMethod(ctx context.Context, m *domain.ShippingMethod) (*domain.ShippingMethod, error) {
+	stored := *m
+	err := r.db.QueryRowContext(ctx, `
+		INSERT INTO shipping_methods (tenant_id, name, price_cents, active)
+		VALUES ($1, $2, $3, $4) RETURNING id, created_at`,
+		m.TenantID, m.Name, m.PriceCents, m.Active,
+	).Scan(&stored.ID, &stored.CreatedAt)
+	if err != nil {
+		return nil, apperrors.ErrInternal.Wrap(err)
+	}
+	return &stored, nil
+}
+
+func (r *PostgresMerchantRepository) ListShippingMethods(ctx context.Context, tenantID string, activeOnly bool) ([]*domain.ShippingMethod, error) {
+	q := `SELECT id, tenant_id, name, price_cents, active, created_at
+		FROM shipping_methods WHERE tenant_id = $1`
+	if activeOnly {
+		q += ` AND active`
+	}
+	rows, err := r.db.QueryContext(ctx, q+` ORDER BY created_at`, tenantID)
+	if err != nil {
+		return nil, apperrors.ErrInternal.Wrap(err)
+	}
+	defer func() { _ = rows.Close() }()
+	out := make([]*domain.ShippingMethod, 0, 4)
+	for rows.Next() {
+		var m domain.ShippingMethod
+		if err := rows.Scan(&m.ID, &m.TenantID, &m.Name, &m.PriceCents, &m.Active, &m.CreatedAt); err != nil {
+			return nil, apperrors.ErrInternal.Wrap(err)
+		}
+		out = append(out, &m)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, apperrors.ErrInternal.Wrap(err)
+	}
+	return out, nil
+}
+
+func (r *PostgresMerchantRepository) DeactivateShippingMethod(ctx context.Context, tenantID, id string) error {
+	res, err := r.db.ExecContext(ctx, `
+		UPDATE shipping_methods SET active = FALSE
+		WHERE tenant_id = $1 AND id = $2 AND active`, tenantID, id)
+	if err != nil {
+		return apperrors.ErrInternal.Wrap(err)
+	}
+	if n, err := res.RowsAffected(); err != nil {
+		return apperrors.ErrInternal.Wrap(err)
+	} else if n == 0 {
+		return apperrors.ErrNotFound
+	}
+	return nil
+}
+
 func (r *PostgresMerchantRepository) scanUser(row *sql.Row) (*domain.User, error) {
 	var u domain.User
 	var role string

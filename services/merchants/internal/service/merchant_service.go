@@ -47,6 +47,11 @@ type MerchantService interface {
 	CreateAPIKey(ctx context.Context, tenantID string, actorRole domain.UserRole, name string) (*domain.APIKey, string, error)
 	ListAPIKeys(ctx context.Context, tenantID string, actorRole domain.UserRole) ([]*domain.APIKey, error)
 	RevokeAPIKey(ctx context.Context, tenantID string, actorRole domain.UserRole, keyID string) error
+	CreateShippingMethod(ctx context.Context, tenantID string, actorRole domain.UserRole, name string, priceCents int64) (*domain.ShippingMethod, error)
+	ListShippingMethods(ctx context.Context, tenantID string, actorRole domain.UserRole) ([]*domain.ShippingMethod, error)
+	DeactivateShippingMethod(ctx context.Context, tenantID string, actorRole domain.UserRole, id string) error
+	// PublicShippingMethods is the buyer/checkout read: active only.
+	PublicShippingMethods(ctx context.Context, tenantID string) ([]*domain.ShippingMethod, error)
 	// ExchangeAPIKey turns a valid key into a short-lived platform token
 	// with the api role — every existing authed API then just works.
 	ExchangeAPIKey(ctx context.Context, apiKey string) (string, error)
@@ -224,6 +229,35 @@ func (s *merchantService) ExchangeAPIKey(ctx context.Context, apiKey string) (st
 		return "", apperrors.ErrInternal.Wrap(err)
 	}
 	return token, nil
+}
+
+func (s *merchantService) CreateShippingMethod(ctx context.Context, tenantID string, actorRole domain.UserRole, name string, priceCents int64) (*domain.ShippingMethod, error) {
+	if !actorRole.CanManageStaff() {
+		return nil, apperrors.ErrForbidden
+	}
+	m, err := domain.NewShippingMethod(tenantID, name, priceCents) // entity decides
+	if err != nil {
+		return nil, apperrors.ErrValidation.Wrap(err)
+	}
+	return s.repo.SaveNewShippingMethod(ctx, m)
+}
+
+func (s *merchantService) ListShippingMethods(ctx context.Context, tenantID string, actorRole domain.UserRole) ([]*domain.ShippingMethod, error) {
+	if !actorRole.CanManageStaff() {
+		return nil, apperrors.ErrForbidden
+	}
+	return s.repo.ListShippingMethods(ctx, tenantID, false)
+}
+
+func (s *merchantService) DeactivateShippingMethod(ctx context.Context, tenantID string, actorRole domain.UserRole, id string) error {
+	if !actorRole.CanManageStaff() {
+		return apperrors.ErrForbidden
+	}
+	return s.repo.DeactivateShippingMethod(ctx, tenantID, id)
+}
+
+func (s *merchantService) PublicShippingMethods(ctx context.Context, tenantID string) ([]*domain.ShippingMethod, error) {
+	return s.repo.ListShippingMethods(ctx, tenantID, true)
 }
 
 func (s *merchantService) session(m *domain.Merchant, u *domain.User) (*Session, error) {

@@ -62,6 +62,22 @@ type ListAPIKeysResponse struct {
 	PageSize int              `json:"page_size"`
 }
 
+// ShippingMethodResponse is a flat shipping rate.
+type ShippingMethodResponse struct {
+	ID         string `json:"id"`
+	Name       string `json:"name"`
+	PriceCents int64  `json:"price_cents"`
+	Active     bool   `json:"active"`
+}
+
+// ListShippingMethodsResponse is the blessed offset envelope (page 1).
+type ListShippingMethodsResponse struct {
+	Items    []ShippingMethodResponse `json:"items"`
+	Total    int                      `json:"total"`
+	Page     int                      `json:"page"`
+	PageSize int                      `json:"page_size"`
+}
+
 // APITokenResponse is the key-exchange result.
 type APITokenResponse struct {
 	Token string `json:"token"`
