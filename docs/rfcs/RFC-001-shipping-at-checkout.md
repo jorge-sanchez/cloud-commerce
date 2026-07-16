@@ -1,6 +1,6 @@
 # RFC-001: Shipping addresses, methods, and costs at checkout
 
-**Status**: Review
+**Status**: Accepted (2026-07-16)
 **Author(s)**: Claude (with Jorge Sanchez)
 **Date**: 2026-07-16
 **Related**: Discussion #47 (Tier 1, item 1); ADR-008 (provider-port
@@ -82,10 +82,15 @@ table later); address verification; picking up Tier-2 discounts.
 5. Live verification: browser purchase with address + method, shipping
    visible in admin, email, and events.
 
-## Open questions
+## Open questions — resolved at acceptance
 
-- Minimum one active method required to check out, or allow "no
-  shipping configured = free shipping"? (Proposed: require one; seed a
-  free "Standard" method for existing tenants in the migration.)
-- Should POS sales carry a null address explicitly (in-person) —
-  proposed yes, `shipping_method` "in-store".
+- **≥1 active method required to check out**: yes; the migration seeds
+  a free "Standard" method for existing tenants.
+- **POS sales**: null address, method recorded as "in-store", and —
+  raised in review — the sale carries a **`location_id`** so multi-
+  location merchants know which register sold what: the POS screen
+  gets a per-device location selector, the order stores the location,
+  `order_paid` carries it, and inventory deducts at *that* location
+  instead of the default (tenant scoping makes foreign IDs inert).
+  Online orders keep location null; fulfillment-location routing is a
+  future feature.
