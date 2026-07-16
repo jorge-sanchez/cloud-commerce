@@ -53,6 +53,32 @@ export interface ListStaffResponse {
   page_size: number /* int */;
 }
 /**
+ * APIKeyResponse is the key metadata shape. Key (plaintext) is present
+ * only in the creation response — it is never retrievable again.
+ */
+export interface APIKeyResponse {
+  id: string;
+  name: string;
+  key?: string;
+  revoked: boolean;
+  created_at: string /* RFC 3339 */;
+}
+/**
+ * ListAPIKeysResponse is the blessed offset envelope (page always 1).
+ */
+export interface ListAPIKeysResponse {
+  items: APIKeyResponse[];
+  total: number /* int */;
+  page: number /* int */;
+  page_size: number /* int */;
+}
+/**
+ * APITokenResponse is the key-exchange result.
+ */
+export interface APITokenResponse {
+  token: string;
+}
+/**
  * PublicStoreResponse is the unauthenticated storefront lookup shape —
  * only what a buyer client needs to browse and display prices.
  */

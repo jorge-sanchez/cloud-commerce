@@ -245,6 +245,23 @@ func NewMerchantSettingsUpdatedEvent(m *Merchant, at time.Time) MerchantSettings
 	}
 }
 
+// UserRoleAPI marks tokens minted from API keys: full data access, no
+// staff/settings management (CanManageStaff is false).
+const UserRoleAPI UserRole = "api"
+
+// APIKey is a third-party credential. The plaintext key exists only in the
+// creation response; persistence sees the hash.
+type APIKey struct {
+	ID        string
+	TenantID  string
+	Name      string
+	CreatedAt time.Time
+	RevokedAt *time.Time
+}
+
+// Revoked reports whether the key has been revoked.
+func (k *APIKey) Revoked() bool { return k.RevokedAt != nil }
+
 // MerchantRepository is the persistence port for the Merchant aggregate.
 type MerchantRepository interface {
 	// SaveNewWithOwner persists the merchant and its owner user atomically
@@ -272,6 +289,15 @@ type MerchantRepository interface {
 	SaveNewStaff(ctx context.Context, tenantID string, u *User) (*User, error)
 	// ListUsers returns all users of the merchant, owner first.
 	ListUsers(ctx context.Context, tenantID string) ([]*User, error)
+	// SaveNewAPIKey persists a key hash for the tenant.
+	SaveNewAPIKey(ctx context.Context, tenantID, name, keyHash string) (*APIKey, error)
+	// ListAPIKeys returns the tenant's keys, newest first.
+	ListAPIKeys(ctx context.Context, tenantID string) ([]*APIKey, error)
+	// RevokeAPIKey marks a key revoked, tenant-scoped; unknown is ErrNotFound.
+	RevokeAPIKey(ctx context.Context, tenantID, keyID string) error
+	// GetAPIKeyByHash resolves an unrevoked key hash — pre-tenant like
+	// GetUserByEmail: the key is how an integration discovers the tenant.
+	GetAPIKeyByHash(ctx context.Context, keyHash string) (*APIKey, error)
 	// DeleteUserIfRemovable loads the user, lets the entity decide whether
 	// it may be removed (the owner may not), and deletes it. Returns
 	// apperrors.ErrConflict when the entity refuses.
