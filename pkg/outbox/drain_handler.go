@@ -16,6 +16,13 @@ type Drainer interface {
 	DrainOnce(ctx context.Context) (int, error)
 }
 
+// DrainerFunc adapts a function to the Drainer interface (the sweep
+// endpoints reuse the drain contract).
+type DrainerFunc func(ctx context.Context) (int, error)
+
+// DrainOnce implements Drainer.
+func (f DrainerFunc) DrainOnce(ctx context.Context) (int, error) { return f(ctx) }
+
 // DrainResponse reports one drain pass (internal endpoint wire shape).
 type DrainResponse struct {
 	Delivered int `json:"delivered"`

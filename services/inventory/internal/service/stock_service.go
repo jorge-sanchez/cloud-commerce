@@ -18,6 +18,9 @@ import (
 // worthwhile at the third consumer; until then this duplication is deliberate.)
 const CatalogProductCreatedType = "catalog.product_created"
 
+// OrdersOrderPlacedType is the consumed checkout event type (issue #37).
+const OrdersOrderPlacedType = "orders.order_placed"
+
 // OrdersOrderPaidType is the consumed order-paid event type (issue #18).
 const OrdersOrderPaidType = "orders.order_paid"
 
@@ -46,6 +49,8 @@ type StockService interface {
 	// are ignored (acked): the topic will carry more than we consume.
 	// Idempotent — Pub/Sub delivers at-least-once.
 	ProcessEvent(ctx context.Context, env events.Envelope) error
+	// SweepReservations releases expired holds; returns how many.
+	SweepReservations(ctx context.Context) (int, error)
 	ListStock(ctx context.Context, tenantID string, page, pageSize int) ([]*domain.StockLevel, int, error)
 	AdjustStock(ctx context.Context, tenantID, locationID, variantID string, delta int64) (*domain.StockLevel, error)
 	CreateLocation(ctx context.Context, tenantID, name string) (*domain.Location, error)
@@ -72,6 +77,8 @@ func (s *stockService) ProcessEvent(ctx context.Context, env events.Envelope) er
 	switch env.Type {
 	case CatalogProductCreatedType:
 		return s.initializeFromProductCreated(ctx, env)
+	case OrdersOrderPlacedType:
+		return s.reserveFromOrderPlaced(ctx, env)
 	case OrdersOrderPaidType:
 		return s.deductFromOrderPaid(ctx, env)
 	case OrdersOrderRefundedType:
@@ -99,17 +106,37 @@ func (s *stockService) initializeFromProductCreated(ctx context.Context, env eve
 	return s.repo.InitializeStock(ctx, env.TenantID, location.ID, items)
 }
 
+func (s *stockService) reserveFromOrderPlaced(ctx context.Context, env events.Envelope) error {
+	var payload orderPaidPayload // same items shape
+	if err := json.Unmarshal(env.Payload, &payload); err != nil {
+		return apperrors.ErrValidation.Wrap(err)
+	}
+	return s.repo.CreateReservation(ctx, env.TenantID, env.ID, payload.OrderID,
+		deductions(payload), env.OccurredAt.Add(domain.ReservationTTL))
+}
+
 func (s *stockService) deductFromOrderPaid(ctx context.Context, env events.Envelope) error {
 	var payload orderPaidPayload
 	if err := json.Unmarshal(env.Payload, &payload); err != nil {
 		return apperrors.ErrValidation.Wrap(err)
 	}
-	items := make([]domain.StockDeduction, 0, len(payload.Items))
-	for _, it := range payload.Items {
+	// Commit the checkout reservation when one exists; legacy orders fall
+	// back to the clamped deduction. Deduped by envelope ID either way.
+	return s.repo.CommitReservationOrDeduct(ctx, env.TenantID, env.ID, payload.OrderID, deductions(payload))
+}
+
+func deductions(p orderPaidPayload) []domain.StockDeduction {
+	items := make([]domain.StockDeduction, 0, len(p.Items))
+	for _, it := range p.Items {
 		items = append(items, domain.StockDeduction{VariantID: it.VariantID, Qty: it.Qty})
 	}
-	// Deduped by envelope ID inside the repository transaction.
-	return s.repo.ApplyStockDeduction(ctx, env.TenantID, env.ID, items)
+	return items
+}
+
+// SweepReservations releases expired holds (Cloud Scheduler calls this
+// through the sweep endpoint, mirroring the outbox drain pattern).
+func (s *stockService) SweepReservations(ctx context.Context) (int, error) {
+	return s.repo.ReleaseExpired(ctx)
 }
 
 func (s *stockService) restoreFromOrderRefunded(ctx context.Context, env events.Envelope) error {

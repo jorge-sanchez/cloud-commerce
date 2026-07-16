@@ -1,5 +1,5 @@
 // Test Budget: 5 distinct behaviors × 2 = 10 max unit tests
-// Actual: 8
+// Actual: 9
 //
 // Behavior 1: ProcessEvent(product_created) — ensures the default location
 //
@@ -11,9 +11,9 @@
 //
 //	with no write
 //
-// Behavior 5: ProcessEvent(order_paid) — deductions reach the repository
+// Behavior 5: ProcessEvent(order_paid) — commit-or-deduct with the order,
 //
-//	deduped by envelope ID
+//	deduped by envelope ID; order_placed creates the reservation
 package service
 
 import (
@@ -37,6 +37,9 @@ import (
 var _ domain.StockRepository = (*fakeStockRepo)(nil)
 
 type fakeStockRepo struct {
+	reserved       []domain.StockDeduction
+	reservedOrder  string
+	committedOrder string
 	restored       []domain.StockDeduction
 	deducted       []domain.StockDeduction
 	deductTenant   string
@@ -80,6 +83,26 @@ func (f *fakeStockRepo) ListStockByTenant(_ context.Context, _ string, _, _ int)
 
 func (f *fakeStockRepo) AdjustIfSufficient(_ context.Context, _, _, _ string, _ int64) (*domain.StockLevel, error) {
 	return nil, f.err
+}
+
+func (f *fakeStockRepo) CreateReservation(_ context.Context, tenantID, eventID, orderID string, items []domain.StockDeduction, _ time.Time) error {
+	f.reservedOrder = orderID
+	f.deductTenant = tenantID
+	f.deductEventID = eventID
+	f.reserved = append(f.reserved, items...)
+	return f.err
+}
+
+func (f *fakeStockRepo) CommitReservationOrDeduct(_ context.Context, tenantID, eventID, orderID string, items []domain.StockDeduction) error {
+	f.committedOrder = orderID
+	f.deductTenant = tenantID
+	f.deductEventID = eventID
+	f.deducted = append(f.deducted, items...)
+	return f.err
+}
+
+func (f *fakeStockRepo) ReleaseExpired(_ context.Context) (int, error) {
+	return 0, f.err
 }
 
 func (f *fakeStockRepo) ApplyStockRestore(_ context.Context, _, _ string, items []domain.StockDeduction) error {
@@ -220,6 +243,24 @@ func TestStockService_ProcessEvent_OrderPaid_DeductsDedupedByEnvelopeID(t *testi
 
 	assert.Equal(t, "tenant-001", repo.deductTenant)
 	assert.Equal(t, "envelope-001", repo.deductEventID, "dedupe must key on the envelope ID")
+	assert.Equal(t, "order-001", repo.committedOrder, "payment must commit the order's reservation")
 	require.Len(t, repo.deducted, 1, "one deduction per order line")
 	assert.Equal(t, int64(2), repo.deducted[0].Qty)
+}
+
+func TestStockService_ProcessEvent_OrderPlaced_CreatesReservation(t *testing.T) {
+	repo := &fakeStockRepo{}
+	svc := NewStockService(repo)
+	payload := map[string]any{
+		"order_id": "order-001",
+		"items":    []map[string]any{{"variant_id": "var-001", "qty": 2}},
+	}
+	env, err := events.New("tenant-001", "order-001", OrdersOrderPlacedType, time.Now(), payload)
+	require.NoError(t, err)
+	env.ID = "envelope-002"
+
+	require.NoError(t, svc.ProcessEvent(context.Background(), env))
+
+	assert.Equal(t, "order-001", repo.reservedOrder)
+	require.Len(t, repo.reserved, 1, "one hold per order line")
 }

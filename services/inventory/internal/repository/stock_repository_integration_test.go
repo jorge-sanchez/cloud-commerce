@@ -1,7 +1,7 @@
 //go:build integration
 
-// Test Budget: 5 distinct behaviors × 2 = 10 max integration tests
-// Actual: 9
+// Test Budget: 6 distinct behaviors × 2 = 12 max integration tests
+// Actual: 11
 //
 // Behavior 1: EnsureDefaultLocation + InitializeStock — idempotent under
 //
@@ -25,6 +25,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	_ "github.com/lib/pq"
 	"github.com/stretchr/testify/assert"
@@ -217,4 +218,57 @@ func TestPostgresStockRepository_ApplyStockDeduction_ReplayedEvent_IsNoOp(t *tes
 			assert.Equal(t, int64(6), l.OnHand, "a replayed event must deduct exactly once")
 		}
 	}
+}
+
+// ---------------------------------------------------------------------------
+// Behavior 6 (issue #37): reservations — reserve, commit once, sweep expiry
+// ---------------------------------------------------------------------------
+
+func TestPostgresStockRepository_ReserveThenCommit_DeductsOnceAndDedupes(t *testing.T) {
+	db := openMigratedDB(t)
+	repo := NewPostgresStockRepository(db)
+	location := initializedStock(t, repo)
+	_, err := repo.AdjustIfSufficient(context.Background(), tenantA, location.ID, variant1, 10)
+	require.NoError(t, err)
+
+	orderID := "cccccccc-0000-0000-0000-000000000001"
+	items := []domain.StockDeduction{{VariantID: variant1, Qty: 4}}
+	require.NoError(t, repo.CreateReservation(context.Background(), tenantA,
+		"eeeeeeee-1111-0000-0000-000000000001", orderID, items, time.Now().Add(domain.ReservationTTL)))
+
+	require.NoError(t, repo.CommitReservationOrDeduct(context.Background(), tenantA,
+		"eeeeeeee-1111-0000-0000-000000000002", orderID, items))
+	// Replay of the paid event must not deduct again.
+	require.NoError(t, repo.CommitReservationOrDeduct(context.Background(), tenantA,
+		"eeeeeeee-1111-0000-0000-000000000002", orderID, items))
+
+	levels, _, err := repo.ListStockByTenant(context.Background(), tenantA, 1, 20)
+	require.NoError(t, err)
+	for _, l := range levels {
+		if l.VariantID == variant1 {
+			assert.Equal(t, int64(6), l.OnHand, "commit must deduct exactly once")
+		}
+	}
+
+	var status string
+	require.NoError(t, db.QueryRow(
+		`SELECT status FROM reservations WHERE order_id = $1`, orderID).Scan(&status))
+	assert.Equal(t, "committed", status)
+}
+
+func TestPostgresStockRepository_ReleaseExpired_SweepsOnlyPastTTL(t *testing.T) {
+	db := openMigratedDB(t)
+	repo := NewPostgresStockRepository(db)
+	initializedStock(t, repo)
+
+	expired := []domain.StockDeduction{{VariantID: variant1, Qty: 1}}
+	require.NoError(t, repo.CreateReservation(context.Background(), tenantA,
+		"eeeeeeee-2222-0000-0000-000000000001", "cccccccc-0000-0000-0000-000000000002", expired, time.Now().Add(-time.Minute)))
+	require.NoError(t, repo.CreateReservation(context.Background(), tenantA,
+		"eeeeeeee-2222-0000-0000-000000000002", "cccccccc-0000-0000-0000-000000000003", expired, time.Now().Add(time.Hour)))
+
+	swept, err := repo.ReleaseExpired(context.Background())
+
+	require.NoError(t, err)
+	assert.Equal(t, 1, swept, "only the past-TTL hold may be released")
 }
