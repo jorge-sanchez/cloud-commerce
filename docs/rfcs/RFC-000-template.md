@@ -35,5 +35,7 @@ Anything unresolved at acceptance time, and who owns resolving it.
 ---
 *Process: RFCs cover features that span services or change contracts;
 discrete architectural decisions still get ADRs (an RFC may spawn
-several). Today review is author + founder; the format exists so a
-bigger team inherits both the documents and the habit.*
+several). Drafts are posted as GitHub Discussions for review (the
+founder's preferred reading surface); the accepted text is committed
+here as the canonical, versioned record. The format exists so a bigger
+team inherits both the documents and the habit.*
