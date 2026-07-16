@@ -106,6 +106,28 @@ export interface PublicStoreResponse {
   handle: string;
   currency: string;
   timezone: string;
+  country: string;
+  tax_mode: string;
+}
+/**
+ * TaxRateResponse is a merchant-defined jurisdiction rate (RFC-002).
+ */
+export interface TaxRateResponse {
+  id: string;
+  name: string;
+  country: string;
+  region: string;
+  rate_bps: number /* int */;
+  applies_to_shipping: boolean;
+}
+/**
+ * ListTaxRatesResponse is the blessed offset envelope (page always 1).
+ */
+export interface ListTaxRatesResponse {
+  items: TaxRateResponse[];
+  total: number /* int */;
+  page: number /* int */;
+  page_size: number /* int */;
 }
 /**
  * StoreResponse is the store profile wire shape.

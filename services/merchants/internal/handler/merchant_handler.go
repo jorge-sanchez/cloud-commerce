@@ -36,6 +36,76 @@ func (h *MerchantHandler) RegisterPublicRoutes(rg *gin.RouterGroup) {
 func (h *MerchantHandler) RegisterStorefrontRoutes(rg *gin.RouterGroup) {
 	rg.GET("/public/stores/:handle", h.PublicStore)
 	rg.GET("/public/tenants/:tenantId/shipping-methods", h.PublicShippingMethods)
+	rg.GET("/public/tenants/:tenantId/tax-rates", h.PublicTaxRates)
+}
+
+func toTaxRateResponses(rates []*domain.TaxRate) []TaxRateResponse {
+	items := make([]TaxRateResponse, 0, len(rates))
+	for _, t := range rates {
+		items = append(items, TaxRateResponse{
+			ID: t.ID, Name: t.Name, Country: t.Country, Region: t.Region,
+			RateBps: t.RateBps, AppliesToShipping: t.AppliesToShipping,
+		})
+	}
+	return items
+}
+
+// PublicTaxRates is the checkout/storefront read (RFC-002).
+func (h *MerchantHandler) PublicTaxRates(c *gin.Context) {
+	rates, err := h.svc.PublicTaxRates(c.Request.Context(), c.Param("tenantId"))
+	if err != nil {
+		apperrors.RespondError(c, err)
+		return
+	}
+	items := toTaxRateResponses(rates)
+	c.JSON(http.StatusOK, ListTaxRatesResponse{Items: items, Total: len(items), Page: 1, PageSize: len(items)})
+}
+
+type createTaxRateRequest struct {
+	Name              string `json:"name" binding:"required"`
+	Country           string `json:"country" binding:"required"`
+	Region            string `json:"region"`
+	RateBps           int    `json:"rate_bps"`
+	AppliesToShipping *bool  `json:"applies_to_shipping"` // default true (RFC-002)
+}
+
+func (h *MerchantHandler) CreateTaxRate(c *gin.Context) {
+	var req createTaxRateRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		apperrors.RespondError(c, apperrors.ErrValidation.Wrap(err))
+		return
+	}
+	applies := true
+	if req.AppliesToShipping != nil {
+		applies = *req.AppliesToShipping
+	}
+	rate, err := h.svc.CreateTaxRate(c.Request.Context(), auth.TenantID(c), actorRole(c), req.Name, req.Country, req.Region, req.RateBps, applies)
+	if err != nil {
+		apperrors.RespondError(c, err)
+		return
+	}
+	c.JSON(http.StatusCreated, TaxRateResponse{
+		ID: rate.ID, Name: rate.Name, Country: rate.Country, Region: rate.Region,
+		RateBps: rate.RateBps, AppliesToShipping: rate.AppliesToShipping,
+	})
+}
+
+func (h *MerchantHandler) ListTaxRates(c *gin.Context) {
+	rates, err := h.svc.ListTaxRates(c.Request.Context(), auth.TenantID(c), actorRole(c))
+	if err != nil {
+		apperrors.RespondError(c, err)
+		return
+	}
+	items := toTaxRateResponses(rates)
+	c.JSON(http.StatusOK, ListTaxRatesResponse{Items: items, Total: len(items), Page: 1, PageSize: len(items)})
+}
+
+func (h *MerchantHandler) DeleteTaxRate(c *gin.Context) {
+	if err := h.svc.DeleteTaxRate(c.Request.Context(), auth.TenantID(c), actorRole(c), c.Param("id")); err != nil {
+		apperrors.RespondError(c, err)
+		return
+	}
+	c.Status(http.StatusNoContent)
 }
 
 func toShippingMethodResponses(methods []*domain.ShippingMethod) []ShippingMethodResponse {
@@ -167,6 +237,8 @@ func (h *MerchantHandler) PublicStore(c *gin.Context) {
 		Handle:   merchant.Handle,
 		Currency: merchant.Settings.Currency,
 		Timezone: merchant.Settings.Timezone,
+		Country:  merchant.Country,
+		TaxMode:  string(merchant.TaxMode),
 	})
 }
 
@@ -182,6 +254,9 @@ func (h *MerchantHandler) RegisterAuthedRoutes(rg *gin.RouterGroup) {
 	rg.POST("/api-keys", h.CreateAPIKey)
 	rg.GET("/api-keys", h.ListAPIKeys)
 	rg.DELETE("/api-keys/:id", h.RevokeAPIKey)
+	rg.POST("/tax-rates", h.CreateTaxRate)
+	rg.GET("/tax-rates", h.ListTaxRates)
+	rg.DELETE("/tax-rates/:id", h.DeleteTaxRate)
 	rg.POST("/shipping-methods", h.CreateShippingMethod)
 	rg.GET("/shipping-methods", h.ListShippingMethods)
 	rg.DELETE("/shipping-methods/:id", h.DeactivateShippingMethod)
@@ -197,6 +272,8 @@ type signUpRequest struct {
 	StoreName string `json:"store_name" binding:"required"`
 	Email     string `json:"email" binding:"required"`
 	Password  string `json:"password" binding:"required"`
+	Country   string `json:"country" binding:"required"`
+	TaxMode   string `json:"tax_mode"` // onboarding confirmation; empty = derived from country
 }
 
 func (h *MerchantHandler) SignUp(c *gin.Context) {
@@ -206,7 +283,7 @@ func (h *MerchantHandler) SignUp(c *gin.Context) {
 		return
 	}
 
-	session, err := h.svc.SignUp(c.Request.Context(), req.StoreName, req.Email, req.Password)
+	session, err := h.svc.SignUp(c.Request.Context(), req.StoreName, req.Email, req.Password, req.Country, domain.TaxMode(req.TaxMode))
 	if err != nil {
 		apperrors.RespondError(c, err)
 		return

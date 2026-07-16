@@ -70,7 +70,7 @@ func openMigratedDB(t *testing.T) *sql.DB {
 
 func signUpFixture(t *testing.T, repo *PostgresMerchantRepository, store, email string) (*domain.Merchant, *domain.User) {
 	t.Helper()
-	m, err := domain.NewMerchant(store)
+	m, err := domain.NewMerchant(store, "PE", "")
 	require.NoError(t, err)
 	owner, err := domain.NewOwner(email, "bcrypt-hash-placeholder")
 	require.NoError(t, err)
@@ -105,7 +105,7 @@ func TestPostgresMerchantRepository_SaveNewWithOwner_TakenEmail_ReturnsConflictA
 	repo := NewPostgresMerchantRepository(db, WithEventRecorder(outbox.NewRecorder()))
 	signUpFixture(t, repo, "First Store", "owner@store.test")
 
-	m, err := domain.NewMerchant("Second Store")
+	m, err := domain.NewMerchant("Second Store", "PE", "")
 	require.NoError(t, err)
 	owner, err := domain.NewOwner("owner@store.test", "bcrypt-hash-placeholder")
 	require.NoError(t, err)

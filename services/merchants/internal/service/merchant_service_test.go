@@ -36,6 +36,7 @@ import (
 var _ domain.MerchantRepository = (*fakeMerchantRepo)(nil)
 
 type fakeMerchantRepo struct {
+	savedRates     []*domain.TaxRate
 	savedShipping  []*domain.ShippingMethod
 	savedKeys      []*domain.APIKey
 	keyByHash      *domain.APIKey
@@ -88,6 +89,19 @@ func (f *fakeMerchantRepo) GetAPIKeyByHash(_ context.Context, _ string) (*domain
 	}
 	return f.keyByHash, nil
 }
+
+func (f *fakeMerchantRepo) SaveNewTaxRate(_ context.Context, t *domain.TaxRate) (*domain.TaxRate, error) {
+	stored := *t
+	stored.ID = "rate-001"
+	f.savedRates = append(f.savedRates, &stored)
+	return &stored, nil
+}
+
+func (f *fakeMerchantRepo) ListTaxRates(_ context.Context, _ string) ([]*domain.TaxRate, error) {
+	return f.savedRates, f.getErr
+}
+
+func (f *fakeMerchantRepo) DeleteTaxRate(_ context.Context, _, _ string) error { return f.getErr }
 
 func (f *fakeMerchantRepo) SaveNewShippingMethod(_ context.Context, m *domain.ShippingMethod) (*domain.ShippingMethod, error) {
 	stored := *m
@@ -148,13 +162,14 @@ func TestMerchantService_SignUp_ValidInput_ReturnsSessionWithToken(t *testing.T)
 	issuer := &fakeIssuer{}
 	svc := NewMerchantService(repo, issuer)
 
-	session, err := svc.SignUp(context.Background(), "Jorge's Store", "Owner@Store.Test", "correct-horse")
+	session, err := svc.SignUp(context.Background(), "Jorge's Store", "Owner@Store.Test", "correct-horse", "PE", "")
 
 	require.NoError(t, err)
 	assert.Equal(t, "token-for-user-001", session.Token)
 	assert.Equal(t, domain.MerchantStatusActive, session.Merchant.Status)
 	assert.Equal(t, "owner@store.test", session.User.Email, "email must be normalized")
 	require.Len(t, repo.savedMerchants, 1, "exactly one merchant must be written")
+	assert.Equal(t, domain.TaxModeInclusive, repo.savedMerchants[0].TaxMode, "PE must default to inclusive pricing (RFC-002)")
 	require.Len(t, issuer.issued, 1, "exactly one token must be issued")
 	assert.Equal(t, "merchant-001", issuer.issued[0].TenantID, "the merchant ID is the tenant claim")
 }
@@ -163,7 +178,7 @@ func TestMerchantService_SignUp_WeakPassword_ReturnsValidationErrorAndNoWrite(t 
 	repo := &fakeMerchantRepo{}
 	svc := NewMerchantService(repo, &fakeIssuer{})
 
-	_, err := svc.SignUp(context.Background(), "Jorge's Store", "owner@store.test", "short")
+	_, err := svc.SignUp(context.Background(), "Jorge's Store", "owner@store.test", "short", "US", "")
 
 	var appErr *apperrors.AppError
 	require.ErrorAs(t, err, &appErr)

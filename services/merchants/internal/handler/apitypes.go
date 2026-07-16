@@ -91,6 +91,26 @@ type PublicStoreResponse struct {
 	Handle   string `json:"handle"`
 	Currency string `json:"currency"`
 	Timezone string `json:"timezone"`
+	Country  string `json:"country"`
+	TaxMode  string `json:"tax_mode"`
+}
+
+// TaxRateResponse is a merchant-defined jurisdiction rate (RFC-002).
+type TaxRateResponse struct {
+	ID                string `json:"id"`
+	Name              string `json:"name"`
+	Country           string `json:"country"`
+	Region            string `json:"region"`
+	RateBps           int    `json:"rate_bps"`
+	AppliesToShipping bool   `json:"applies_to_shipping"`
+}
+
+// ListTaxRatesResponse is the blessed offset envelope (page always 1).
+type ListTaxRatesResponse struct {
+	Items    []TaxRateResponse `json:"items"`
+	Total    int               `json:"total"`
+	Page     int               `json:"page"`
+	PageSize int               `json:"page_size"`
 }
 
 // StoreResponse is the store profile wire shape.
