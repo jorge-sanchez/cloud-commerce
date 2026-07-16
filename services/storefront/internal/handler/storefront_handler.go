@@ -33,6 +33,7 @@ func DefaultTheme() Theme {
 // Config carries the client-side wiring injected into templates.
 type Config struct {
 	OrdersURL    string // buyer JS talks to the orders public API
+	MerchantsURL string // buyer JS fetches shipping methods (RFC-001)
 	StripePubKey string // publishable key for Stripe.js (not a secret)
 }
 

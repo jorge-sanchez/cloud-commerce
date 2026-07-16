@@ -66,6 +66,29 @@ func (p *HTTPPlatform) GetActiveVariant(ctx context.Context, tenantID, variantID
 	}, nil
 }
 
+// GetShippingMethod resolves an active flat rate from the merchants
+// public list (RFC-001 part 1).
+func (p *HTTPPlatform) GetShippingMethod(ctx context.Context, tenantID, methodID string) (service.ShippingMethod, error) {
+	var body struct {
+		Items []struct {
+			ID         string `json:"id"`
+			Name       string `json:"name"`
+			PriceCents int64  `json:"price_cents"`
+		} `json:"items"`
+	}
+	err := p.getJSON(ctx, fmt.Sprintf("%s/v1/public/tenants/%s/shipping-methods",
+		p.merchantsURL, url.PathEscape(tenantID)), &body)
+	if err != nil {
+		return service.ShippingMethod{}, err
+	}
+	for _, m := range body.Items {
+		if m.ID == methodID {
+			return service.ShippingMethod{ID: m.ID, Name: m.Name, PriceCents: m.PriceCents}, nil
+		}
+	}
+	return service.ShippingMethod{}, apperrors.ErrNotFound
+}
+
 func (p *HTTPPlatform) getJSON(ctx context.Context, rawURL string, out any) error {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
 	if err != nil {

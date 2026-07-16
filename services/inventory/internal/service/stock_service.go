@@ -28,8 +28,9 @@ const OrdersOrderPaidType = "orders.order_paid"
 const OrdersOrderRefundedType = "orders.order_refunded"
 
 type orderPaidPayload struct {
-	OrderID string `json:"order_id"`
-	Items   []struct {
+	OrderID    string `json:"order_id"`
+	LocationID string `json:"location_id"`
+	Items      []struct {
 		VariantID string `json:"variant_id"`
 		Qty       int64  `json:"qty"`
 	} `json:"items"`
@@ -121,8 +122,9 @@ func (s *stockService) deductFromOrderPaid(ctx context.Context, env events.Envel
 		return apperrors.ErrValidation.Wrap(err)
 	}
 	// Commit the checkout reservation when one exists; legacy orders fall
-	// back to the clamped deduction. Deduped by envelope ID either way.
-	return s.repo.CommitReservationOrDeduct(ctx, env.TenantID, env.ID, payload.OrderID, deductions(payload))
+	// back to the clamped deduction. POS sales carry the registering
+	// location (RFC-001) — deduct there instead of the default.
+	return s.repo.CommitReservationOrDeduct(ctx, env.TenantID, env.ID, payload.OrderID, payload.LocationID, deductions(payload))
 }
 
 func deductions(p orderPaidPayload) []domain.StockDeduction {

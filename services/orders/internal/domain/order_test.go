@@ -23,6 +23,10 @@ import (
 	"github.com/jorge-sanchez/cloud-commerce/services/orders/internal/domain"
 )
 
+func testAddr() domain.Address {
+	return domain.Address{Name: "Buyer", Line1: "Av. Test 123", City: "Austin", Country: "US"}
+}
+
 func cartWithShirt(t *testing.T) *domain.Cart {
 	t.Helper()
 	cart := &domain.Cart{ID: "cart-001", TenantID: "tenant-001", Currency: "PEN"}
@@ -60,12 +64,12 @@ func TestCart_AddItem_ZeroQty_ReturnsErrBadQty(t *testing.T) {
 func TestNewOrderFromCart_ValidCart_SnapshotsItemsAndTotal(t *testing.T) {
 	cart := cartWithShirt(t)
 
-	order, err := domain.NewOrderFromCart(cart, "Buyer@Example.Test")
+	order, err := domain.NewOrderFromCart(cart, "Buyer@Example.Test", testAddr(), "Standard", 500)
 
 	require.NoError(t, err)
 	assert.Equal(t, domain.OrderStatusPending, order.Status)
 	assert.Equal(t, "buyer@example.test", order.Email, "email must be normalized")
-	assert.Equal(t, int64(2*4990), order.TotalCents)
+	assert.Equal(t, int64(2*4990+500), order.TotalCents, "total must include shipping")
 	require.Len(t, order.Items, 1)
 	assert.Equal(t, "PEN", order.Currency)
 }
@@ -73,7 +77,7 @@ func TestNewOrderFromCart_ValidCart_SnapshotsItemsAndTotal(t *testing.T) {
 func TestNewOrderFromCart_EmptyCart_ReturnsErrEmptyCart(t *testing.T) {
 	cart := &domain.Cart{ID: "cart-002", TenantID: "tenant-001", Currency: "PEN"}
 
-	_, err := domain.NewOrderFromCart(cart, "buyer@example.test")
+	_, err := domain.NewOrderFromCart(cart, "buyer@example.test", testAddr(), "Standard", 0)
 
 	require.ErrorIs(t, err, domain.ErrEmptyCart)
 }
@@ -84,7 +88,7 @@ func TestNewOrderFromCart_EmptyCart_ReturnsErrEmptyCart(t *testing.T) {
 
 func TestOrder_MarkPaidThenFulfill_TransitionsInOrder(t *testing.T) {
 	cart := cartWithShirt(t)
-	order, err := domain.NewOrderFromCart(cart, "buyer@example.test")
+	order, err := domain.NewOrderFromCart(cart, "buyer@example.test", testAddr(), "Standard", 0)
 	require.NoError(t, err)
 
 	require.NoError(t, order.MarkPaid())
@@ -95,7 +99,7 @@ func TestOrder_MarkPaidThenFulfill_TransitionsInOrder(t *testing.T) {
 
 func TestOrder_CancelAfterPaid_ReturnsErrNotCancellable(t *testing.T) {
 	cart := cartWithShirt(t)
-	order, err := domain.NewOrderFromCart(cart, "buyer@example.test")
+	order, err := domain.NewOrderFromCart(cart, "buyer@example.test", testAddr(), "Standard", 0)
 	require.NoError(t, err)
 	require.NoError(t, order.MarkPaid())
 

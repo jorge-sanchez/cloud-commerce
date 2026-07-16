@@ -4,7 +4,18 @@
 <h2>Checkout</h2>
 <form onsubmit="checkout(event)">
   <input type="email" id="email" placeholder="you@example.com" required>
-  <button>Place order</button> <span id="msg" class="muted"></span>
+  <h3>Shipping address</h3>
+  <input id="a_name" placeholder="Full name" required>
+  <input id="a_line1" placeholder="Address line 1" required>
+  <input id="a_line2" placeholder="Address line 2 (optional)">
+  <input id="a_city" placeholder="City" required>
+  <input id="a_region" placeholder="State / Region">
+  <input id="a_postal" placeholder="Postal code">
+  <input id="a_country" placeholder="Country (2 letters, e.g. US)" maxlength="2" required>
+  <input id="a_phone" placeholder="Phone (optional)">
+  <h3>Shipping method</h3>
+  <select id="ship_method" required></select>
+  <div><button>Place order</button> <span id="msg" class="muted"></span></div>
 </form>
 <script>
 async function load() {
@@ -18,11 +29,27 @@ async function load() {
       `<tr><th>Total</th><th>${(cart.total_cents/100).toFixed(2)} ${cart.currency}</th></tr></table>`;
   } catch (e) { el.innerHTML = "<p class='muted'>Cart is empty.</p>"; }
 }
+async function loadMethods() {
+  const id = localStorage.getItem(cartKey);
+  if (!id) return;
+  const cart = await api("/v1/public/carts/" + id);
+  const res = await fetch(MERCHANTS_URL + "/v1/public/tenants/" + cart.tenant_id + "/shipping-methods");
+  const methods = (await res.json()).items;
+  document.getElementById("ship_method").innerHTML = methods.map(m =>
+    `<option value="${m.id}">${m.name} — ${(m.price_cents/100).toFixed(2)} ${cart.currency}</option>`).join("");
+}
+loadMethods().catch(() => {});
+function val(id) { return document.getElementById(id).value; }
 async function checkout(ev) {
   ev.preventDefault();
   try {
     const id = localStorage.getItem(cartKey);
-    const order = await api("/v1/public/carts/" + id + "/checkout", {method: "POST", body: JSON.stringify({email: document.getElementById("email").value})});
+    const order = await api("/v1/public/carts/" + id + "/checkout", {method: "POST", body: JSON.stringify({
+      email: val("email"),
+      shipping_method_id: val("ship_method"),
+      shipping_address: {name: val("a_name"), line1: val("a_line1"), line2: val("a_line2"), city: val("a_city"),
+        region: val("a_region"), postal: val("a_postal"), country: val("a_country").toUpperCase(), phone: val("a_phone")},
+    })});
     localStorage.removeItem(cartKey);
     location.href = "/" + STORE_HANDLE + "/pay/" + order.id;
   } catch (e) { document.getElementById("msg").textContent = e.message; }

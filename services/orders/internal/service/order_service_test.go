@@ -55,7 +55,7 @@ func (f *fakeOrderRepo) ReplaceItems(_ context.Context, cart *domain.Cart) (*dom
 	return cart, nil
 }
 
-func (f *fakeOrderRepo) PlaceOrderFromCart(_ context.Context, _, _ string) (*domain.Order, error) {
+func (f *fakeOrderRepo) PlaceOrderFromCart(_ context.Context, _, _ string, _ domain.Address, _ string, _ int64) (*domain.Order, error) {
 	return f.order, f.err
 }
 
@@ -98,10 +98,12 @@ func (f *fakeOrderRepo) GetSalesSummary(_ context.Context, _ string, _ int) (*do
 var _ Platform = (*fakePlatform)(nil)
 
 type fakePlatform struct {
-	store      StoreInfo
-	storeErr   error
-	variant    VariantSnapshot
-	variantErr error
+	store       StoreInfo
+	storeErr    error
+	variant     VariantSnapshot
+	variantErr  error
+	shipping    ShippingMethod
+	shippingErr error
 }
 
 func (f *fakePlatform) ResolveStore(_ context.Context, _ string) (StoreInfo, error) {
@@ -110,6 +112,10 @@ func (f *fakePlatform) ResolveStore(_ context.Context, _ string) (StoreInfo, err
 
 func (f *fakePlatform) GetActiveVariant(_ context.Context, _, _ string) (VariantSnapshot, error) {
 	return f.variant, f.variantErr
+}
+
+func (f *fakePlatform) GetShippingMethod(_ context.Context, _, _ string) (ShippingMethod, error) {
+	return f.shipping, f.shippingErr
 }
 
 // ---------------------------------------------------------------------------
@@ -171,10 +177,25 @@ func TestOrderService_AddItem_InactiveVariant_PassesNotFoundThrough(t *testing.T
 // Behavior 3: Checkout delegates
 // ---------------------------------------------------------------------------
 
-func TestOrderService_Checkout_RepoRejects_PassesValidationThrough(t *testing.T) {
-	svc := NewOrderService(&fakeOrderRepo{err: apperrors.ErrValidation}, &fakePlatform{})
+func validAddr() domain.Address {
+	return domain.Address{Name: "Buyer", Line1: "Av. Test 123", City: "Austin", Country: "US"}
+}
 
-	_, err := svc.Checkout(context.Background(), "cart-001", "buyer@example.test")
+func TestOrderService_Checkout_PricesShippingServerSide(t *testing.T) {
+	repo := &fakeOrderRepo{cart: &domain.Cart{ID: "cart-001", TenantID: "tenant-001", Currency: "PEN"},
+		order: &domain.Order{ID: "order-001"}}
+	svc := NewOrderService(repo, &fakePlatform{shipping: ShippingMethod{ID: "m1", Name: "Standard", PriceCents: 500}})
 
-	require.ErrorIs(t, err, apperrors.ErrValidation)
+	_, err := svc.Checkout(context.Background(), "cart-001", "buyer@example.test", validAddr(), "m1")
+
+	require.NoError(t, err)
+}
+
+func TestOrderService_Checkout_UnknownShippingMethod_PassesNotFoundThrough(t *testing.T) {
+	repo := &fakeOrderRepo{cart: &domain.Cart{ID: "cart-001", TenantID: "tenant-001"}}
+	svc := NewOrderService(repo, &fakePlatform{shippingErr: apperrors.ErrNotFound})
+
+	_, err := svc.Checkout(context.Background(), "cart-001", "buyer@example.test", validAddr(), "bogus")
+
+	require.ErrorIs(t, err, apperrors.ErrNotFound)
 }

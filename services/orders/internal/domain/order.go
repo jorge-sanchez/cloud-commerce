@@ -31,6 +31,8 @@ var (
 	ErrNotFulfillable = errors.New("order cannot be fulfilled in its current status")
 	ErrNotCancellable = errors.New("order cannot be cancelled in its current status")
 	ErrNotRefundable  = errors.New("order cannot be refunded in its current status")
+	ErrBadAddress     = errors.New("shipping address is incomplete")
+	ErrNoShipping     = errors.New("a shipping method is required at checkout")
 )
 
 // Item is a priced line: the snapshot taken when the buyer added it. Later
@@ -41,6 +43,29 @@ type Item struct {
 	Title      string
 	PriceCents int64
 	Qty        int64
+}
+
+// Address is the structured shipping snapshot (RFC-001): what was true
+// at checkout, immutable afterwards.
+type Address struct {
+	Name    string
+	Line1   string
+	Line2   string
+	City    string
+	Region  string
+	Postal  string
+	Country string // ISO 3166-1 alpha-2
+	Phone   string
+}
+
+// Validate enforces the minimal completeness rule — no verification
+// service at launch (RFC-001).
+func (a Address) Validate() error {
+	if strings.TrimSpace(a.Name) == "" || strings.TrimSpace(a.Line1) == "" ||
+		strings.TrimSpace(a.City) == "" || len(strings.TrimSpace(a.Country)) != 2 {
+		return ErrBadAddress
+	}
+	return nil
 }
 
 // Cart is the buyer's aggregate. Its unguessable ID is the buyer's
@@ -100,6 +125,10 @@ type Order struct {
 	Items            []Item
 	TotalCents       int64
 	Status           OrderStatus
+	ShippingAddress  Address
+	ShippingMethod   string
+	ShippingCents    int64
+	LocationID       string // POS: registering location; empty online
 	PaymentReference string
 	TrackingNumber   string
 	Carrier          string
@@ -109,7 +138,7 @@ type Order struct {
 
 // NewPOSSale builds an in-person sale: an order born paid (ADR-010).
 // Buyer email is optional — cash buyers often give none.
-func NewPOSSale(tenantID, currency, email string, items []Item) (*Order, error) {
+func NewPOSSale(tenantID, currency, email, locationID string, items []Item) (*Order, error) {
 	if len(items) == 0 {
 		return nil, ErrEmptyCart
 	}
@@ -121,20 +150,29 @@ func NewPOSSale(tenantID, currency, email string, items []Item) (*Order, error) 
 		total += it.PriceCents * it.Qty
 	}
 	return &Order{
-		TenantID:   tenantID,
-		Email:      strings.ToLower(strings.TrimSpace(email)),
-		Currency:   currency,
-		Items:      items,
-		TotalCents: total,
-		Status:     OrderStatusPaid,
+		TenantID:       tenantID,
+		Email:          strings.ToLower(strings.TrimSpace(email)),
+		Currency:       currency,
+		Items:          items,
+		ShippingMethod: "in-store",
+		LocationID:     locationID,
+		TotalCents:     total,
+		Status:         OrderStatusPaid,
 	}, nil
 }
 
 // NewOrderFromCart converts a cart into a pending order. The entity
-// decides: empty carts and invalid emails are rejected.
-func NewOrderFromCart(cart *Cart, email string) (*Order, error) {
+// decides: empty carts, invalid emails, incomplete addresses, and a
+// missing shipping method are rejected. Total = items + shipping.
+func NewOrderFromCart(cart *Cart, email string, addr Address, shippingMethod string, shippingCents int64) (*Order, error) {
 	if len(cart.Items) == 0 {
 		return nil, ErrEmptyCart
+	}
+	if err := addr.Validate(); err != nil {
+		return nil, err
+	}
+	if strings.TrimSpace(shippingMethod) == "" || shippingCents < 0 {
+		return nil, ErrNoShipping
 	}
 	normalized := strings.ToLower(strings.TrimSpace(email))
 	at := strings.Index(normalized, "@")
@@ -144,12 +182,15 @@ func NewOrderFromCart(cart *Cart, email string) (*Order, error) {
 	items := make([]Item, len(cart.Items))
 	copy(items, cart.Items)
 	return &Order{
-		TenantID:   cart.TenantID,
-		Email:      normalized,
-		Currency:   cart.Currency,
-		Items:      items,
-		TotalCents: cart.TotalCents(),
-		Status:     OrderStatusPending,
+		TenantID:        cart.TenantID,
+		Email:           normalized,
+		Currency:        cart.Currency,
+		Items:           items,
+		ShippingAddress: addr,
+		ShippingMethod:  strings.TrimSpace(shippingMethod),
+		ShippingCents:   shippingCents,
+		TotalCents:      cart.TotalCents() + shippingCents,
+		Status:          OrderStatusPending,
 	}, nil
 }
 
@@ -279,6 +320,9 @@ func NewOrderPlacedEvent(o *Order, at time.Time) OrderPlacedEvent {
 // OrderPaidEvent is emitted when payment confirms; inventory consumes it to
 // decrement stock (#18).
 type OrderPaidEvent struct {
+	// LocationID is set for POS sales: inventory deducts there instead
+	// of the default location (RFC-001 acceptance resolution).
+	LocationID string      `json:"location_id,omitempty"`
 	OrderID    string      `json:"order_id"`
 	Number     int64       `json:"number"`
 	TenantID   string      `json:"tenant_id"`
@@ -291,7 +335,7 @@ type OrderPaidEvent struct {
 
 // NewOrderPaidEvent builds the event from the persisted order.
 func NewOrderPaidEvent(o *Order, at time.Time) OrderPaidEvent {
-	return OrderPaidEvent{OrderID: o.ID, Number: o.Number, TenantID: o.TenantID, Email: o.Email, TotalCents: o.TotalCents, Currency: o.Currency, Items: eventItems(o), PaidAt: at}
+	return OrderPaidEvent{LocationID: o.LocationID, OrderID: o.ID, Number: o.Number, TenantID: o.TenantID, Email: o.Email, TotalCents: o.TotalCents, Currency: o.Currency, Items: eventItems(o), PaidAt: at}
 }
 
 func eventItems(o *Order) []EventItem {
@@ -335,8 +379,9 @@ type OrderRepository interface {
 	ReplaceItems(ctx context.Context, cart *Cart) (*Cart, error)
 	// PlaceOrderFromCart converts the cart into a pending order in one
 	// transaction: order + items inserted, cart deleted, order_placed
-	// event recorded. The entity decides (empty cart, bad email).
-	PlaceOrderFromCart(ctx context.Context, cartID, email string) (*Order, error)
+	// event recorded. The entity decides (empty cart, bad email,
+	// incomplete address, missing shipping).
+	PlaceOrderFromCart(ctx context.Context, cartID, email string, addr Address, shippingMethod string, shippingCents int64) (*Order, error)
 	// MarkPaidIfPayable loads the order, lets the entity decide the
 	// transition, persists it with the provider payment reference, and
 	// records order_paid. Returns apperrors.ErrConflict when rejected.

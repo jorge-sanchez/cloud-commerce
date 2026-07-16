@@ -31,6 +31,19 @@ export interface CartResponse {
   total_cents: number /* int64 */;
 }
 /**
+ * AddressResponse is the shipping address snapshot (RFC-001).
+ */
+export interface AddressResponse {
+  name: string;
+  line1: string;
+  line2: string;
+  city: string;
+  region: string;
+  postal: string;
+  country: string;
+  phone: string;
+}
+/**
  * OrderResponse is the order wire shape (buyer checkout result and
  * merchant order views).
  */
@@ -39,6 +52,10 @@ export interface OrderResponse {
   number: number /* int64 */;
   email: string;
   currency: string;
+  shipping_method: string;
+  shipping_cents: number /* int64 */;
+  location_id: string;
+  shipping_address: AddressResponse;
   items: ItemResponse[];
   total_cents: number /* int64 */;
   status: string;

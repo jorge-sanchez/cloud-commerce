@@ -19,6 +19,7 @@
 </style>
 <script>
   const ORDERS_URL = {{.Config.OrdersURL}};
+  const MERCHANTS_URL = {{.Config.MerchantsURL}};
   const STORE_HANDLE = {{.Store.Handle}};
   const cartKey = "cc_cart_" + STORE_HANDLE;
   async function api(path, opts) {

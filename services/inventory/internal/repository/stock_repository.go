@@ -277,7 +277,7 @@ func (r *PostgresStockRepository) CreateReservation(ctx context.Context, tenantI
 	return nil
 }
 
-func (r *PostgresStockRepository) CommitReservationOrDeduct(ctx context.Context, tenantID, eventID, orderID string, items []domain.StockDeduction) error {
+func (r *PostgresStockRepository) CommitReservationOrDeduct(ctx context.Context, tenantID, eventID, orderID, locationID string, items []domain.StockDeduction) error {
 	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
 		return apperrors.ErrInternal.Wrap(err)
@@ -317,12 +317,17 @@ func (r *PostgresStockRepository) CommitReservationOrDeduct(ctx context.Context,
 
 	for _, item := range deduct {
 		var s domain.StockLevel
+		// POS sales deduct at the registering location; online orders at
+		// the tenant default. A foreign location ID matches nothing —
+		// tenant scoping keeps it inert.
 		err := tx.QueryRowContext(ctx, `
 			SELECT sl.id, sl.on_hand FROM stock_levels sl
 			JOIN locations l ON l.id = sl.location_id
-			WHERE sl.tenant_id = $1 AND sl.variant_id = $2 AND l.is_default
+			WHERE sl.tenant_id = $1 AND sl.variant_id = $2
+			  AND ((NULLIF($3, '') IS NOT NULL AND sl.location_id = NULLIF($3, '')::uuid)
+			    OR (NULLIF($3, '') IS NULL AND l.is_default))
 			FOR UPDATE OF sl`,
-			tenantID, item.VariantID,
+			tenantID, item.VariantID, locationID,
 		).Scan(&s.ID, &s.OnHand)
 		if errors.Is(err, sql.ErrNoRows) {
 			continue

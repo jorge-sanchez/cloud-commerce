@@ -30,6 +30,13 @@ type VariantSnapshot struct {
 	PriceCents int64
 }
 
+// ShippingMethod is a resolved flat rate (RFC-001).
+type ShippingMethod struct {
+	ID         string
+	Name       string
+	PriceCents int64
+}
+
 // Platform is the outbound port to the other services' public APIs,
 // implemented by gateway.HTTPPlatform. The service depends on the
 // interface, not the concrete implementation.
@@ -39,6 +46,8 @@ type Platform interface {
 	// GetActiveVariant returns the snapshot for an active product's
 	// variant, or apperrors.ErrNotFound (drafts are not purchasable).
 	GetActiveVariant(ctx context.Context, tenantID, variantID string) (VariantSnapshot, error)
+	// GetShippingMethod resolves an active flat rate for the tenant.
+	GetShippingMethod(ctx context.Context, tenantID, methodID string) (ShippingMethod, error)
 }
 
 // OrderService is the application-service port consumed by the handlers.
@@ -47,12 +56,12 @@ type OrderService interface {
 	GetCart(ctx context.Context, cartID string) (*domain.Cart, error)
 	AddItem(ctx context.Context, cartID, variantID string, qty int64) (*domain.Cart, error)
 	RemoveItem(ctx context.Context, cartID, variantID string) (*domain.Cart, error)
-	Checkout(ctx context.Context, cartID, email string) (*domain.Order, error)
+	Checkout(ctx context.Context, cartID, email string, addr domain.Address, shippingMethodID string) (*domain.Order, error)
 	ListOrders(ctx context.Context, tenantID string, page, pageSize int) ([]*domain.Order, int, error)
 	FulfillOrder(ctx context.Context, tenantID, orderID, trackingNumber, carrier string) (*domain.Order, error)
 	// RecordPOSSale registers an in-person cash sale (ADR-010): prices
 	// snapshot server-side; idempotent on the client sale ID.
-	RecordPOSSale(ctx context.Context, tenantID, clientSaleID, currency, email string, lines []POSLine) (*domain.Order, error)
+	RecordPOSSale(ctx context.Context, tenantID, clientSaleID, currency, email, locationID string, lines []POSLine) (*domain.Order, error)
 	GetOrder(ctx context.Context, tenantID, orderID string) (*domain.Order, error)
 	GetAnalytics(ctx context.Context, tenantID string, days int) (*domain.SalesSummary, error)
 }
@@ -117,17 +126,26 @@ func (s *orderService) RemoveItem(ctx context.Context, cartID, variantID string)
 	return s.repo.ReplaceItems(ctx, cart)
 }
 
-func (s *orderService) Checkout(ctx context.Context, cartID, email string) (*domain.Order, error) {
+func (s *orderService) Checkout(ctx context.Context, cartID, email string, addr domain.Address, shippingMethodID string) (*domain.Order, error) {
+	cart, err := s.repo.GetCart(ctx, cartID)
+	if err != nil {
+		return nil, err
+	}
+	// Price the shipping server-side — never trust the client's number.
+	method, err := s.platform.GetShippingMethod(ctx, cart.TenantID, shippingMethodID)
+	if err != nil {
+		return nil, err
+	}
 	// The entity validates inside the repository transaction; the placed
 	// event is recorded there too (ADR-002).
-	return s.repo.PlaceOrderFromCart(ctx, cartID, email)
+	return s.repo.PlaceOrderFromCart(ctx, cartID, email, addr, method.Name, method.PriceCents)
 }
 
 func (s *orderService) ListOrders(ctx context.Context, tenantID string, page, pageSize int) ([]*domain.Order, int, error) {
 	return s.repo.ListByTenant(ctx, tenantID, page, pageSize)
 }
 
-func (s *orderService) RecordPOSSale(ctx context.Context, tenantID, clientSaleID, currency, email string, lines []POSLine) (*domain.Order, error) {
+func (s *orderService) RecordPOSSale(ctx context.Context, tenantID, clientSaleID, currency, email, locationID string, lines []POSLine) (*domain.Order, error) {
 	items := make([]domain.Item, 0, len(lines))
 	for _, l := range lines {
 		snap, err := s.platform.GetActiveVariant(ctx, tenantID, l.VariantID)
@@ -139,7 +157,7 @@ func (s *orderService) RecordPOSSale(ctx context.Context, tenantID, clientSaleID
 			PriceCents: snap.PriceCents, Qty: l.Qty,
 		})
 	}
-	sale, err := domain.NewPOSSale(tenantID, currency, email, items) // entity decides
+	sale, err := domain.NewPOSSale(tenantID, currency, email, locationID, items) // entity decides
 	if err != nil {
 		return nil, apperrors.ErrValidation.Wrap(err)
 	}
