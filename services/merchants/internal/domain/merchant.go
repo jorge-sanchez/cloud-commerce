@@ -36,6 +36,8 @@ var (
 	ErrNotSuspendable  = errors.New("merchant cannot be suspended in its current status")
 	ErrInvalidCurrency = errors.New("currency must be a three-letter ISO 4217 code")
 	ErrInvalidTimezone = errors.New("timezone must be a valid IANA zone name")
+	// ErrNegativeShipping guards flat-rate creation (RFC-001/ADR-011).
+	ErrNegativeShipping = errors.New("shipping price must not be negative")
 )
 
 // StoreSettings is the merchant-configurable store profile.

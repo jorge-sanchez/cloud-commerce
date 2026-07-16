@@ -73,6 +73,24 @@ export interface ListAPIKeysResponse {
   page_size: number /* int */;
 }
 /**
+ * ShippingMethodResponse is a flat shipping rate.
+ */
+export interface ShippingMethodResponse {
+  id: string;
+  name: string;
+  price_cents: number /* int64 */;
+  active: boolean;
+}
+/**
+ * ListShippingMethodsResponse is the blessed offset envelope (page 1).
+ */
+export interface ListShippingMethodsResponse {
+  items: ShippingMethodResponse[];
+  total: number /* int */;
+  page: number /* int */;
+  page_size: number /* int */;
+}
+/**
  * APITokenResponse is the key-exchange result.
  */
 export interface APITokenResponse {
