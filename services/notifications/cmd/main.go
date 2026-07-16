@@ -12,8 +12,9 @@ import (
 	"github.com/gin-gonic/gin"
 	_ "github.com/lib/pq"
 
-	"github.com/jorge-sanchez/cloud-commerce/pkg/auth"
 	"google.golang.org/api/idtoken"
+
+	"github.com/jorge-sanchez/cloud-commerce/pkg/auth"
 
 	"go.uber.org/zap"
 
