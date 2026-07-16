@@ -59,6 +59,8 @@ func (f *fakeStockService) ProcessEvent(_ context.Context, env events.Envelope) 
 	return f.err
 }
 
+func (f *fakeStockService) SweepReservations(context.Context) (int, error) { return 0, nil }
+
 func (f *fakeStockService) ListStock(context.Context, string, int, int) ([]*domain.StockLevel, int, error) {
 	return nil, 0, nil
 }

@@ -219,6 +219,145 @@ func (r *PostgresStockRepository) AdjustIfSufficient(ctx context.Context, tenant
 	return &s, nil
 }
 
+// dedupeInsert claims the event ID; false means replay.
+func dedupeInsert(ctx context.Context, tx *sql.Tx, eventID string) (bool, error) {
+	res, err := tx.ExecContext(ctx,
+		`INSERT INTO processed_events (event_id) VALUES ($1) ON CONFLICT DO NOTHING`, eventID)
+	if err != nil {
+		return false, apperrors.ErrInternal.Wrap(err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return false, apperrors.ErrInternal.Wrap(err)
+	}
+	return n > 0, nil
+}
+
+func (r *PostgresStockRepository) CreateReservation(ctx context.Context, tenantID, eventID, orderID string, items []domain.StockDeduction, expiresAt time.Time) error {
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return apperrors.ErrInternal.Wrap(err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	fresh, err := dedupeInsert(ctx, tx, eventID)
+	if err != nil {
+		return err
+	}
+	if !fresh {
+		return nil
+	}
+
+	var reservationID string
+	err = tx.QueryRowContext(ctx, `
+		INSERT INTO reservations (tenant_id, order_id, expires_at)
+		VALUES ($1, $2, $3)
+		ON CONFLICT (order_id) DO NOTHING
+		RETURNING id`,
+		tenantID, orderID, expiresAt,
+	).Scan(&reservationID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return tx.Commit() // order already reserved by another delivery
+	}
+	if err != nil {
+		return apperrors.ErrInternal.Wrap(err)
+	}
+	for _, it := range items {
+		if _, err := tx.ExecContext(ctx, `
+			INSERT INTO reservation_items (reservation_id, variant_id, tenant_id, qty)
+			VALUES ($1, $2, $3, $4)`,
+			reservationID, it.VariantID, tenantID, it.Qty,
+		); err != nil {
+			return apperrors.ErrInternal.Wrap(err)
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return apperrors.ErrInternal.Wrap(err)
+	}
+	return nil
+}
+
+func (r *PostgresStockRepository) CommitReservationOrDeduct(ctx context.Context, tenantID, eventID, orderID string, items []domain.StockDeduction) error {
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return apperrors.ErrInternal.Wrap(err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	fresh, err := dedupeInsert(ctx, tx, eventID)
+	if err != nil {
+		return err
+	}
+	if !fresh {
+		return nil
+	}
+
+	var res domain.Reservation
+	var status string
+	err = tx.QueryRowContext(ctx, `
+		SELECT id, status FROM reservations
+		WHERE tenant_id = $1 AND order_id = $2 FOR UPDATE`,
+		tenantID, orderID,
+	).Scan(&res.ID, &status)
+	res.Status = domain.ReservationStatus(status)
+
+	deduct := items
+	switch {
+	case err == nil && res.CanCommit(): // entity decides
+		if _, err := tx.ExecContext(ctx,
+			`UPDATE reservations SET status = 'committed', updated_at = NOW() WHERE id = $1`, res.ID,
+		); err != nil {
+			return apperrors.ErrInternal.Wrap(err)
+		}
+	case err == nil, errors.Is(err, sql.ErrNoRows):
+		// Released/committed or never reserved: legacy clamp path below.
+	default:
+		return apperrors.ErrInternal.Wrap(err)
+	}
+
+	for _, item := range deduct {
+		var s domain.StockLevel
+		err := tx.QueryRowContext(ctx, `
+			SELECT sl.id, sl.on_hand FROM stock_levels sl
+			JOIN locations l ON l.id = sl.location_id
+			WHERE sl.tenant_id = $1 AND sl.variant_id = $2 AND l.is_default
+			FOR UPDATE OF sl`,
+			tenantID, item.VariantID,
+		).Scan(&s.ID, &s.OnHand)
+		if errors.Is(err, sql.ErrNoRows) {
+			continue
+		}
+		if err != nil {
+			return apperrors.ErrInternal.Wrap(err)
+		}
+		s.DeductClamped(item.Qty) // entity decides the clamp
+		if _, err := tx.ExecContext(ctx,
+			`UPDATE stock_levels SET on_hand = $1, updated_at = NOW() WHERE id = $2`, s.OnHand, s.ID,
+		); err != nil {
+			return apperrors.ErrInternal.Wrap(err)
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return apperrors.ErrInternal.Wrap(err)
+	}
+	return nil
+}
+
+func (r *PostgresStockRepository) ReleaseExpired(ctx context.Context) (int, error) {
+	res, err := r.db.ExecContext(ctx, `
+		UPDATE reservations SET status = 'released', updated_at = NOW()
+		WHERE status = 'active' AND expires_at < NOW()`)
+	if err != nil {
+		return 0, apperrors.ErrInternal.Wrap(err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return 0, apperrors.ErrInternal.Wrap(err)
+	}
+	return int(n), nil
+}
+
 // ApplyStockRestore is the order_refunded consumer's write: dedupe insert
 // and additive updates in one transaction (rows that were never
 // initialized are skipped, mirroring deduction).

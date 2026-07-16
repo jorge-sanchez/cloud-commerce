@@ -109,6 +109,10 @@ func main() {
 	internal := router.Group("/internal")
 	internal.POST("/outbox/drain",
 		outbox.DrainHandler(relay, os.Getenv("OUTBOX_DRAIN_TOKEN")))
+	// Reservation expiry sweep (issue #37) reuses the drain contract:
+	// bearer-token POST returning a count; Cloud Scheduler calls it.
+	internal.POST("/reservations/sweep",
+		outbox.DrainHandler(outbox.DrainerFunc(svc.SweepReservations), os.Getenv("OUTBOX_DRAIN_TOKEN")))
 	// Pub/Sub push: only PUBSUB_PUSH_SA may deliver, proven by a Google
 	// OIDC token with this endpoint as audience. Fails closed when unset.
 	handler.NewPubSubHandler(svc, idtokenValidator{},

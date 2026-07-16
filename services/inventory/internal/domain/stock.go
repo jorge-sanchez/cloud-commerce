@@ -116,6 +116,34 @@ type StockDeduction struct {
 	Qty       int64
 }
 
+// ReservationStatus is the lifecycle state of a stock reservation.
+type ReservationStatus string
+
+const (
+	ReservationStatusActive    ReservationStatus = "active"
+	ReservationStatusCommitted ReservationStatus = "committed"
+	ReservationStatusReleased  ReservationStatus = "released"
+)
+
+// ReservationTTL is how long checkout holds stock before payment.
+const ReservationTTL = 30 * time.Minute
+
+// Reservation holds order quantities between checkout and payment.
+type Reservation struct {
+	ID        string
+	TenantID  string
+	OrderID   string
+	Status    ReservationStatus
+	ExpiresAt time.Time
+}
+
+// CanCommit reports whether payment may consume this reservation. A late
+// payment may commit an expired-but-unswept reservation — the hold was for
+// contention, not correctness.
+func (r *Reservation) CanCommit() bool {
+	return r.Status == ReservationStatusActive
+}
+
 // StockRepository is the persistence port for inventory.
 type StockRepository interface {
 	// EnsureDefaultLocation returns the tenant's default location, creating
@@ -143,4 +171,14 @@ type StockRepository interface {
 	// (order_paid is delivered at-least-once). Missing rows are skipped;
 	// insufficiency clamps at zero (the entity decides the clamp).
 	ApplyStockDeduction(ctx context.Context, tenantID, eventID string, items []StockDeduction) error
+	// CreateReservation records an active hold for an order's quantities,
+	// deduped by event ID and unique per order (issue #37).
+	CreateReservation(ctx context.Context, tenantID, eventID, orderID string, items []StockDeduction, expiresAt time.Time) error
+	// CommitReservationOrDeduct consumes the order's active reservation on
+	// payment (deducting on_hand); orders without one fall back to the
+	// clamped deduction. Deduped by event ID.
+	CommitReservationOrDeduct(ctx context.Context, tenantID, eventID, orderID string, items []StockDeduction) error
+	// ReleaseExpired releases active reservations past their TTL and
+	// returns how many were swept.
+	ReleaseExpired(ctx context.Context) (int, error)
 }
