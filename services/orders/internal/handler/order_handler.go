@@ -318,6 +318,10 @@ func toOrderResponse(o *domain.Order) OrderResponse {
 		TotalCents:     o.TotalCents,
 		ShippingMethod: o.ShippingMethod,
 		ShippingCents:  o.ShippingCents,
+		TaxCents:       o.TaxCents,
+		TaxName:        o.TaxName,
+		TaxRateBps:     o.TaxRateBps,
+		TaxInclusive:   o.TaxInclusive,
 		LocationID:     o.LocationID,
 		ShippingAddress: AddressResponse{
 			Name: o.ShippingAddress.Name, Line1: o.ShippingAddress.Line1, Line2: o.ShippingAddress.Line2,

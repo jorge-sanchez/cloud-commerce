@@ -15,6 +15,7 @@
   <input id="a_phone" placeholder="Phone (optional)">
   <h3>Shipping method</h3>
   <select id="ship_method" required></select>
+  <p id="tax_line" class="muted">{{if eq .Store.TaxMode "inclusive"}}Prices include tax.{{end}}</p>
   <div><button>Place order</button> <span id="msg" class="muted"></span></div>
 </form>
 <script>
@@ -29,16 +30,39 @@ async function load() {
       `<tr><th>Total</th><th>${(cart.total_cents/100).toFixed(2)} ${cart.currency}</th></tr></table>`;
   } catch (e) { el.innerHTML = "<p class='muted'>Cart is empty.</p>"; }
 }
+const TAX_MODE = {{.Store.TaxMode}};
+let cartData = null, taxRates = [], methodPrices = {};
 async function loadMethods() {
   const id = localStorage.getItem(cartKey);
   if (!id) return;
-  const cart = await api("/v1/public/carts/" + id);
-  const res = await fetch(MERCHANTS_URL + "/v1/public/tenants/" + cart.tenant_id + "/shipping-methods");
+  cartData = await api("/v1/public/carts/" + id);
+  const res = await fetch(MERCHANTS_URL + "/v1/public/tenants/" + cartData.tenant_id + "/shipping-methods");
   const methods = (await res.json()).items;
+  methods.forEach(m => methodPrices[m.id] = m.price_cents);
   document.getElementById("ship_method").innerHTML = methods.map(m =>
-    `<option value="${m.id}">${m.name} — ${(m.price_cents/100).toFixed(2)} ${cart.currency}</option>`).join("");
+    `<option value="${m.id}">${m.name} — ${(m.price_cents/100).toFixed(2)} ${cartData.currency}</option>`).join("");
+  const tr = await fetch(MERCHANTS_URL + "/v1/public/tenants/" + cartData.tenant_id + "/tax-rates");
+  taxRates = (await tr.json()).items;
+  estimateTax();
 }
 loadMethods().catch(() => {});
+// Estimated only — the server computes the authoritative tax (RFC-002).
+function estimateTax() {
+  if (TAX_MODE === "inclusive" || !cartData) return;
+  const country = (val("a_country") || "").toUpperCase();
+  const region = (val("a_region") || "").toUpperCase();
+  const rate = taxRates.find(r => r.country === country && r.region === region) ||
+               taxRates.find(r => r.country === country && r.region === "");
+  const el = document.getElementById("tax_line");
+  if (!rate || rate.rate_bps === 0) { el.textContent = "Tax calculated at checkout."; return; }
+  let taxable = cartData.total_cents;
+  const ship = methodPrices[val("ship_method")] || 0;
+  if (rate.applies_to_shipping) taxable += ship;
+  const tax = Math.round(taxable * rate.rate_bps / 10000);
+  el.textContent = `Estimated ${rate.name} (${(rate.rate_bps/100).toFixed(2)}%): ${(tax/100).toFixed(2)} ${cartData.currency}`;
+}
+["a_country","a_region","ship_method"].forEach(id =>
+  document.getElementById(id).addEventListener("change", estimateTax));
 function val(id) { return document.getElementById(id).value; }
 async function checkout(ev) {
   ev.preventDefault();

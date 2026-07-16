@@ -54,6 +54,10 @@ export interface OrderResponse {
   currency: string;
   shipping_method: string;
   shipping_cents: number /* int64 */;
+  tax_cents: number /* int64 */;
+  tax_name: string;
+  tax_rate_bps: number /* int */;
+  tax_inclusive: boolean;
   location_id: string;
   shipping_address: AddressResponse;
   items: ItemResponse[];

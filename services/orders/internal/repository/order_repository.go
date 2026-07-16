@@ -50,10 +50,10 @@ func NewPostgresOrderRepository(db *sql.DB, opts ...Option) *PostgresOrderReposi
 func (r *PostgresOrderRepository) SaveNewCart(ctx context.Context, cart *domain.Cart) (*domain.Cart, error) {
 	stored := *cart
 	err := r.db.QueryRowContext(ctx, `
-		INSERT INTO carts (tenant_id, currency)
-		VALUES ($1, $2)
+		INSERT INTO carts (tenant_id, currency, tax_inclusive)
+		VALUES ($1, $2, $3)
 		RETURNING id, created_at, updated_at`,
-		cart.TenantID, cart.Currency,
+		cart.TenantID, cart.Currency, cart.TaxInclusive,
 	).Scan(&stored.ID, &stored.CreatedAt, &stored.UpdatedAt)
 	if err != nil {
 		return nil, apperrors.ErrInternal.Wrap(err)
@@ -65,10 +65,10 @@ func (r *PostgresOrderRepository) SaveNewCart(ctx context.Context, cart *domain.
 func (r *PostgresOrderRepository) GetCart(ctx context.Context, cartID string) (*domain.Cart, error) {
 	var cart domain.Cart
 	err := r.db.QueryRowContext(ctx, `
-		SELECT id, tenant_id, currency, created_at, updated_at
+		SELECT id, tenant_id, currency, tax_inclusive, created_at, updated_at
 		FROM carts WHERE id = $1`,
 		cartID,
-	).Scan(&cart.ID, &cart.TenantID, &cart.Currency, &cart.CreatedAt, &cart.UpdatedAt)
+	).Scan(&cart.ID, &cart.TenantID, &cart.Currency, &cart.TaxInclusive, &cart.CreatedAt, &cart.UpdatedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, apperrors.ErrNotFound
 	}
@@ -117,7 +117,7 @@ func (r *PostgresOrderRepository) ReplaceItems(ctx context.Context, cart *domain
 
 // PlaceOrderFromCart converts the cart into a pending order in one
 // transaction. The entity decides whether the conversion is legal.
-func (r *PostgresOrderRepository) PlaceOrderFromCart(ctx context.Context, cartID, email string, addr domain.Address, shippingMethod string, shippingCents int64) (*domain.Order, error) {
+func (r *PostgresOrderRepository) PlaceOrderFromCart(ctx context.Context, cartID, email string, addr domain.Address, shippingMethod string, shippingCents int64, tax domain.TaxSpec) (*domain.Order, error) {
 	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
 		return nil, apperrors.ErrInternal.Wrap(err)
@@ -126,9 +126,9 @@ func (r *PostgresOrderRepository) PlaceOrderFromCart(ctx context.Context, cartID
 
 	var cart domain.Cart
 	err = tx.QueryRowContext(ctx, `
-		SELECT id, tenant_id, currency FROM carts WHERE id = $1 FOR UPDATE`,
+		SELECT id, tenant_id, currency, tax_inclusive FROM carts WHERE id = $1 FOR UPDATE`,
 		cartID,
-	).Scan(&cart.ID, &cart.TenantID, &cart.Currency)
+	).Scan(&cart.ID, &cart.TenantID, &cart.Currency, &cart.TaxInclusive)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, apperrors.ErrNotFound
 	}
@@ -140,7 +140,7 @@ func (r *PostgresOrderRepository) PlaceOrderFromCart(ctx context.Context, cartID
 		return nil, err
 	}
 
-	order, err := domain.NewOrderFromCart(&cart, email, addr, shippingMethod, shippingCents) // entity decides
+	order, err := domain.NewOrderFromCart(&cart, email, addr, shippingMethod, shippingCents, tax) // entity decides
 	if err != nil {
 		return nil, apperrors.ErrValidation.Wrap(err)
 	}
@@ -148,13 +148,13 @@ func (r *PostgresOrderRepository) PlaceOrderFromCart(ctx context.Context, cartID
 	err = tx.QueryRowContext(ctx, `
 		INSERT INTO orders (tenant_id, email, currency, total_cents, status,
 			ship_name, ship_line1, ship_line2, ship_city, ship_region, ship_postal, ship_country, ship_phone,
-			shipping_method, shipping_cents)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+			shipping_method, shipping_cents, tax_cents, tax_name, tax_rate_bps, tax_inclusive)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
 		RETURNING id, number, created_at, updated_at`,
 		order.TenantID, order.Email, order.Currency, order.TotalCents, string(order.Status),
 		order.ShippingAddress.Name, order.ShippingAddress.Line1, order.ShippingAddress.Line2, order.ShippingAddress.City,
 		order.ShippingAddress.Region, order.ShippingAddress.Postal, order.ShippingAddress.Country, order.ShippingAddress.Phone,
-		order.ShippingMethod, order.ShippingCents,
+		order.ShippingMethod, order.ShippingCents, order.TaxCents, order.TaxName, order.TaxRateBps, order.TaxInclusive,
 	).Scan(&order.ID, &order.Number, &order.CreatedAt, &order.UpdatedAt)
 	if err != nil {
 		return nil, apperrors.ErrInternal.Wrap(err)
@@ -201,12 +201,13 @@ func (r *PostgresOrderRepository) SavePOSSale(ctx context.Context, tenantID, cli
 
 	stored := *order
 	err = tx.QueryRowContext(ctx, `
-		INSERT INTO orders (tenant_id, email, currency, total_cents, status, payment_reference, client_sale_id, shipping_method, location_id)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NULLIF($9, '')::uuid)
+		INSERT INTO orders (tenant_id, email, currency, total_cents, status, payment_reference, client_sale_id, shipping_method, location_id, tax_cents, tax_name, tax_rate_bps, tax_inclusive)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NULLIF($9, '')::uuid, $10, $11, $12, $13)
 		ON CONFLICT (tenant_id, client_sale_id) WHERE client_sale_id IS NOT NULL DO NOTHING
 		RETURNING id, number, created_at, updated_at`,
 		tenantID, order.Email, order.Currency, order.TotalCents, string(order.Status),
 		"pos_cash_"+clientSaleID, clientSaleID, order.ShippingMethod, order.LocationID,
+		order.TaxCents, order.TaxName, order.TaxRateBps, order.TaxInclusive,
 	).Scan(&stored.ID, &stored.Number, &stored.CreatedAt, &stored.UpdatedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		// Replay: return the original sale.
@@ -401,7 +402,7 @@ func (r *PostgresOrderRepository) FulfillIfFulfillable(ctx context.Context, tena
 	return order, nil
 }
 
-const orderColumns = "id, number, tenant_id, email, currency, total_cents, status, payment_reference, tracking_number, carrier, ship_name, ship_line1, ship_line2, ship_city, ship_region, ship_postal, ship_country, ship_phone, shipping_method, shipping_cents, COALESCE(location_id::text, ''), created_at, updated_at"
+const orderColumns = "id, number, tenant_id, email, currency, total_cents, status, payment_reference, tracking_number, carrier, ship_name, ship_line1, ship_line2, ship_city, ship_region, ship_postal, ship_country, ship_phone, shipping_method, shipping_cents, tax_cents, tax_name, tax_rate_bps, tax_inclusive, COALESCE(location_id::text, ''), created_at, updated_at"
 
 func (r *PostgresOrderRepository) GetByID(ctx context.Context, tenantID, orderID string) (*domain.Order, error) {
 	order, err := r.scanOrder(r.db.QueryRowContext(ctx,
@@ -456,7 +457,7 @@ func (r *PostgresOrderRepository) ListByTenant(ctx context.Context, tenantID str
 		var status string
 		if err := rows.Scan(&o.ID, &o.Number, &o.TenantID, &o.Email, &o.Currency, &o.TotalCents, &status, &o.PaymentReference, &o.TrackingNumber, &o.Carrier,
 			&o.ShippingAddress.Name, &o.ShippingAddress.Line1, &o.ShippingAddress.Line2, &o.ShippingAddress.City, &o.ShippingAddress.Region, &o.ShippingAddress.Postal, &o.ShippingAddress.Country, &o.ShippingAddress.Phone,
-			&o.ShippingMethod, &o.ShippingCents, &o.LocationID, &o.CreatedAt, &o.UpdatedAt); err != nil {
+			&o.ShippingMethod, &o.ShippingCents, &o.TaxCents, &o.TaxName, &o.TaxRateBps, &o.TaxInclusive, &o.LocationID, &o.CreatedAt, &o.UpdatedAt); err != nil {
 			return nil, 0, apperrors.ErrInternal.Wrap(err)
 		}
 		o.Status = domain.OrderStatus(status)
@@ -526,7 +527,7 @@ func (r *PostgresOrderRepository) scanOrder(row *sql.Row) (*domain.Order, error)
 	var status string
 	err := row.Scan(&o.ID, &o.Number, &o.TenantID, &o.Email, &o.Currency, &o.TotalCents, &status, &o.PaymentReference, &o.TrackingNumber, &o.Carrier,
 		&o.ShippingAddress.Name, &o.ShippingAddress.Line1, &o.ShippingAddress.Line2, &o.ShippingAddress.City, &o.ShippingAddress.Region, &o.ShippingAddress.Postal, &o.ShippingAddress.Country, &o.ShippingAddress.Phone,
-		&o.ShippingMethod, &o.ShippingCents, &o.LocationID, &o.CreatedAt, &o.UpdatedAt)
+		&o.ShippingMethod, &o.ShippingCents, &o.TaxCents, &o.TaxName, &o.TaxRateBps, &o.TaxInclusive, &o.LocationID, &o.CreatedAt, &o.UpdatedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, apperrors.ErrNotFound
 	}

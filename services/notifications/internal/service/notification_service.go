@@ -56,11 +56,15 @@ func NewNotificationService(log SentLog, sender EmailSender, opts ...Option) Not
 }
 
 type paidPayload struct {
-	OrderID    string `json:"order_id"`
-	Number     int64  `json:"number"`
-	Email      string `json:"email"`
-	TotalCents int64  `json:"total_cents"`
-	Currency   string `json:"currency"`
+	OrderID      string `json:"order_id"`
+	Number       int64  `json:"number"`
+	Email        string `json:"email"`
+	TotalCents   int64  `json:"total_cents"`
+	Currency     string `json:"currency"`
+	TaxCents     int64  `json:"tax_cents"`
+	TaxName      string `json:"tax_name"`
+	TaxRateBps   int    `json:"tax_rate_bps"`
+	TaxInclusive bool   `json:"tax_inclusive"`
 }
 
 type fulfilledPayload struct {
@@ -85,8 +89,19 @@ func (s *notificationService) ProcessEvent(ctx context.Context, env events.Envel
 		}
 		kind, recipient = "order_paid", p.Email
 		subject = fmt.Sprintf("Payment received — order #%d", p.Number)
-		html = fmt.Sprintf("<p>Thanks! We received your payment of <b>%s %.2f</b> for order <b>#%d</b>.</p><p>We'll let you know when it ships.</p>",
-			p.Currency, float64(p.TotalCents)/100, p.Number)
+		taxLine := ""
+		if p.TaxCents > 0 {
+			// The line renders from the merchant's rate name (RFC-002
+			// resolution): "Incluye IGV (18%)" needs no region-specific code.
+			word := "Tax"
+			if p.TaxInclusive {
+				word = "Includes"
+			}
+			taxLine = fmt.Sprintf("<p>%s %s (%.2f%%): %s %.2f</p>",
+				word, p.TaxName, float64(p.TaxRateBps)/100, p.Currency, float64(p.TaxCents)/100)
+		}
+		html = fmt.Sprintf("<p>Thanks! We received your payment of <b>%s %.2f</b> for order <b>#%d</b>.</p>%s<p>We'll let you know when it ships.</p>",
+			p.Currency, float64(p.TotalCents)/100, p.Number, taxLine)
 	case OrderFulfilledType:
 		var p fulfilledPayload
 		if err := json.Unmarshal(env.Payload, &p); err != nil {

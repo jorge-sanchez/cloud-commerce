@@ -37,6 +37,26 @@ func (h *MerchantHandler) RegisterStorefrontRoutes(rg *gin.RouterGroup) {
 	rg.GET("/public/stores/:handle", h.PublicStore)
 	rg.GET("/public/tenants/:tenantId/shipping-methods", h.PublicShippingMethods)
 	rg.GET("/public/tenants/:tenantId/tax-rates", h.PublicTaxRates)
+	rg.GET("/public/tenants/:tenantId/store", h.PublicStoreByTenant)
+}
+
+// PublicStoreByTenant serves store meta keyed by tenant ID (POS tax
+// resolution, RFC-002 — checkout flows key by handle instead).
+func (h *MerchantHandler) PublicStoreByTenant(c *gin.Context) {
+	merchant, err := h.svc.GetStore(c.Request.Context(), c.Param("tenantId"))
+	if err != nil {
+		apperrors.RespondError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, PublicStoreResponse{
+		ID:       merchant.ID,
+		Name:     merchant.Name,
+		Handle:   merchant.Handle,
+		Currency: merchant.Settings.Currency,
+		Timezone: merchant.Settings.Timezone,
+		Country:  merchant.Country,
+		TaxMode:  string(merchant.TaxMode),
+	})
 }
 
 func toTaxRateResponses(rates []*domain.TaxRate) []TaxRateResponse {

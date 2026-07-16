@@ -1,5 +1,5 @@
-// Test Budget: 3 distinct behaviors × 2 = 6 max unit tests
-// Actual: 6
+// Test Budget: 4 distinct behaviors × 2 = 8 max unit tests
+// Actual: 8
 //
 // Behavior 1: Cart.AddItem — accumulates qty for the same variant; rejects
 //
@@ -64,7 +64,7 @@ func TestCart_AddItem_ZeroQty_ReturnsErrBadQty(t *testing.T) {
 func TestNewOrderFromCart_ValidCart_SnapshotsItemsAndTotal(t *testing.T) {
 	cart := cartWithShirt(t)
 
-	order, err := domain.NewOrderFromCart(cart, "Buyer@Example.Test", testAddr(), "Standard", 500)
+	order, err := domain.NewOrderFromCart(cart, "Buyer@Example.Test", testAddr(), "Standard", 500, domain.TaxSpec{})
 
 	require.NoError(t, err)
 	assert.Equal(t, domain.OrderStatusPending, order.Status)
@@ -77,7 +77,7 @@ func TestNewOrderFromCart_ValidCart_SnapshotsItemsAndTotal(t *testing.T) {
 func TestNewOrderFromCart_EmptyCart_ReturnsErrEmptyCart(t *testing.T) {
 	cart := &domain.Cart{ID: "cart-002", TenantID: "tenant-001", Currency: "PEN"}
 
-	_, err := domain.NewOrderFromCart(cart, "buyer@example.test", testAddr(), "Standard", 0)
+	_, err := domain.NewOrderFromCart(cart, "buyer@example.test", testAddr(), "Standard", 0, domain.TaxSpec{})
 
 	require.ErrorIs(t, err, domain.ErrEmptyCart)
 }
@@ -88,7 +88,7 @@ func TestNewOrderFromCart_EmptyCart_ReturnsErrEmptyCart(t *testing.T) {
 
 func TestOrder_MarkPaidThenFulfill_TransitionsInOrder(t *testing.T) {
 	cart := cartWithShirt(t)
-	order, err := domain.NewOrderFromCart(cart, "buyer@example.test", testAddr(), "Standard", 0)
+	order, err := domain.NewOrderFromCart(cart, "buyer@example.test", testAddr(), "Standard", 0, domain.TaxSpec{})
 	require.NoError(t, err)
 
 	require.NoError(t, order.MarkPaid())
@@ -99,7 +99,7 @@ func TestOrder_MarkPaidThenFulfill_TransitionsInOrder(t *testing.T) {
 
 func TestOrder_CancelAfterPaid_ReturnsErrNotCancellable(t *testing.T) {
 	cart := cartWithShirt(t)
-	order, err := domain.NewOrderFromCart(cart, "buyer@example.test", testAddr(), "Standard", 0)
+	order, err := domain.NewOrderFromCart(cart, "buyer@example.test", testAddr(), "Standard", 0, domain.TaxSpec{})
 	require.NoError(t, err)
 	require.NoError(t, order.MarkPaid())
 
@@ -107,4 +107,32 @@ func TestOrder_CancelAfterPaid_ReturnsErrNotCancellable(t *testing.T) {
 
 	require.ErrorIs(t, err, domain.ErrNotCancellable)
 	assert.Equal(t, domain.OrderStatusPaid, order.Status, "a rejected cancel must not change status")
+}
+
+// ---------------------------------------------------------------------------
+// Behavior 4 (RFC-002): tax math — exclusive adds, inclusive extracts
+// ---------------------------------------------------------------------------
+
+func TestNewOrderFromCart_ExclusiveTax_AddsOnTopOfItemsAndShipping(t *testing.T) {
+	cart := cartWithShirt(t) // 2 × 4990 = 9980
+
+	order, err := domain.NewOrderFromCart(cart, "buyer@example.test", testAddr(), "Express", 1500,
+		domain.TaxSpec{Name: "TX", RateBps: 825, AppliesToShipping: true, Inclusive: false})
+
+	require.NoError(t, err)
+	assert.Equal(t, int64(947), order.TaxCents, "8.25%% of 11480, half-up")
+	assert.Equal(t, int64(9980+1500+947), order.TotalCents, "exclusive tax adds on top")
+	assert.False(t, order.TaxInclusive)
+}
+
+func TestNewOrderFromCart_InclusiveTax_ExtractsWithoutChangingTotal(t *testing.T) {
+	cart := cartWithShirt(t) // 9980
+
+	order, err := domain.NewOrderFromCart(cart, "buyer@example.test", testAddr(), "Standard", 0,
+		domain.TaxSpec{Name: "IGV", RateBps: 1800, AppliesToShipping: true, Inclusive: true})
+
+	require.NoError(t, err)
+	assert.Equal(t, int64(9980), order.TotalCents, "inclusive tax must not change the total")
+	assert.Equal(t, int64(1522), order.TaxCents, "extracted IGV: 9980×18/118 half-up")
+	assert.True(t, order.TaxInclusive)
 }
