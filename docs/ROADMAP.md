@@ -132,6 +132,11 @@ Each of these is its own project, gated on the core being solid:
   outbound webhooks for third parties.
 - **In-house payments** — only with real volume and a compliance budget.
 
+*Status (2026-07-16): POS (ADR-010), public API v1 with keys, and outbound
+webhooks are live; the storefront ships data-driven themes (ADR-009) as the
+builder's foundation. Remaining Phase 4 ambitions — the visual theme
+builder, dedicated POS hardware, OAuth apps — await real merchant demand.*
+
 ## Cross-cutting workstreams (every phase)
 
 - **Observability** — structured logs (`pkg/logger`), metrics, tracing;
