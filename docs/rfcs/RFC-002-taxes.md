@@ -1,6 +1,6 @@
 # RFC-002: Taxes — multi-region from day one
 
-**Status**: Accepted (2026-07-16)
+**Status**: Implemented (2026-07-16, PRs #57–#59) — live verification: inclusive order #13 (PE, total unchanged, IGV extracted) and exclusive order #14 (US-TX, 8.25% added on top)
 **Author(s)**: Claude (with Jorge Sanchez)
 **Date**: 2026-07-16
 **Related**: Reviewed as Discussion #54 (see resolutions comment);
