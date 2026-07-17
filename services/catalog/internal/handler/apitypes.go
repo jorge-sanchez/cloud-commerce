@@ -15,6 +15,17 @@ type VariantResponse struct {
 	PriceCents   int64    `json:"price_cents"`
 }
 
+// ImageResponse is the single-image wire shape. URL is composed from the
+// configured media base at read time (position 0 is the primary/thumbnail).
+type ImageResponse struct {
+	ID       string `json:"id"`
+	URL      string `json:"url"`
+	AltText  string `json:"alt_text"`
+	Position int    `json:"position"`
+	Width    int    `json:"width"`
+	Height   int    `json:"height"`
+}
+
 // ProductResponse is the single-product wire shape.
 type ProductResponse struct {
 	ID          string            `json:"id"`
@@ -23,8 +34,17 @@ type ProductResponse struct {
 	Status      string            `json:"status"`
 	Options     []string          `json:"options"`
 	Variants    []VariantResponse `json:"variants"`
+	Images      []ImageResponse   `json:"images"`
 	CreatedAt   time.Time         `json:"created_at"`
 	UpdatedAt   time.Time         `json:"updated_at"`
+}
+
+// SignImageUploadResponse hands the admin a direct-to-storage upload URL and
+// the object key it must send back to finalize the image.
+type SignImageUploadResponse struct {
+	UploadURL  string `json:"upload_url"`
+	StorageKey string `json:"storage_key"`
+	Method     string `json:"method"`
 }
 
 // ListProductsResponse is the blessed offset-pagination envelope:

@@ -20,7 +20,9 @@ import (
 	"github.com/jorge-sanchez/cloud-commerce/pkg/events"
 	"github.com/jorge-sanchez/cloud-commerce/pkg/logger"
 	"github.com/jorge-sanchez/cloud-commerce/pkg/outbox"
+	"github.com/jorge-sanchez/cloud-commerce/services/catalog/internal/domain"
 	"github.com/jorge-sanchez/cloud-commerce/services/catalog/internal/handler"
+	"github.com/jorge-sanchez/cloud-commerce/services/catalog/internal/media"
 	"github.com/jorge-sanchez/cloud-commerce/services/catalog/internal/producer"
 	"github.com/jorge-sanchez/cloud-commerce/services/catalog/internal/repository"
 	"github.com/jorge-sanchez/cloud-commerce/services/catalog/internal/service"
@@ -58,8 +60,38 @@ func main() {
 
 	repo := repository.NewPostgresProductRepository(db,
 		repository.WithEventRecorder(outbox.NewRecorder()))
-	svc := service.NewProductService(repo)
-	h := handler.NewProductHandler(svc)
+
+	// Product media (RFC-003, ADR-013): GCS when a bucket is configured;
+	// otherwise a no-network local stand-in so `make run-catalog` stays
+	// zero-config. mediaBaseURL is where storage keys resolve for buyers —
+	// direct GCS today, a CDN host later, without touching stored data.
+	bucket := os.Getenv("MEDIA_BUCKET")
+	mediaBaseURL := envOr("MEDIA_PUBLIC_BASE_URL", "")
+	var mediaStore domain.MediaStore
+	if bucket != "" {
+		signerSA := os.Getenv("MEDIA_SIGNER_SA")
+		if signerSA == "" {
+			log.Fatal("MEDIA_SIGNER_SA must hold the signing service account email when MEDIA_BUCKET is set")
+		}
+		gcs, err := media.NewGCSStore(context.Background(), bucket, signerSA)
+		if err != nil {
+			log.Fatal("create media store", zap.Error(err))
+		}
+		mediaStore = gcs
+		if mediaBaseURL == "" {
+			mediaBaseURL = "https://storage.googleapis.com/" + bucket
+		}
+		log.Info("product media: gcs", zap.String("bucket", bucket))
+	} else {
+		if mediaBaseURL == "" {
+			mediaBaseURL = "http://localhost:" + envOr("PORT", "8080") + "/media"
+		}
+		mediaStore = media.NewLocalStore(mediaBaseURL)
+		log.Info("product media: local stub (MEDIA_BUCKET unset)")
+	}
+
+	svc := service.NewProductService(repo, service.WithMediaStore(mediaStore))
+	h := handler.NewProductHandler(svc, handler.WithMediaBaseURL(mediaBaseURL))
 	collections := handler.NewCollectionHandler(
 		service.NewCollectionService(repository.NewPostgresCollectionRepository(db)))
 

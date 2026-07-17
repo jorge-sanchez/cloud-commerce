@@ -27,14 +27,40 @@ type ProductService interface {
 	// GetPublicVariant is the storefront's purchasable-variant lookup.
 	GetPublicVariant(ctx context.Context, tenantID, variantID string) (*domain.VariantLookup, error)
 	Activate(ctx context.Context, tenantID, id string) (*domain.Product, error)
+
+	// SignImageUpload mints a short-lived direct-to-storage upload URL for a
+	// new product image, returning the object key to finalize with.
+	SignImageUpload(ctx context.Context, tenantID, productID, contentType string) (key, url string, err error)
+	// AttachImage finalizes an uploaded object onto the product's gallery.
+	AttachImage(ctx context.Context, tenantID, productID string, in AttachImageInput) (*domain.Product, error)
+	// ReorderImages reorders the product's gallery (position 0 = primary).
+	ReorderImages(ctx context.Context, tenantID, productID string, orderedIDs []string) (*domain.Product, error)
+	// RemoveImage removes one image from the gallery and its stored object.
+	RemoveImage(ctx context.Context, tenantID, productID, imageID string) (*domain.Product, error)
+}
+
+// AttachImageInput is a finalize request: the object the browser uploaded plus
+// its cosmetic dimensions (read client-side). The authoritative content type
+// and size are re-read from storage server-side.
+type AttachImageInput struct {
+	StorageKey string
+	AltText    string
+	Width      int
+	Height     int
 }
 
 type productService struct {
-	repo domain.ProductRepository // required
+	repo  domain.ProductRepository // required
+	media domain.MediaStore        // may be nil (image endpoints disabled)
 }
 
 // Option configures optional dependencies on the product service.
 type Option func(*productService)
+
+// WithMediaStore wires the object-storage port for product images.
+func WithMediaStore(m domain.MediaStore) Option {
+	return func(s *productService) { s.media = m }
+}
 
 // NewProductService constructs the product application service.
 func NewProductService(repo domain.ProductRepository, opts ...Option) ProductService {

@@ -15,3 +15,9 @@ variable "github_repository" {
   type        = string
   default     = "jorge-sanchez/cloud-commerce"
 }
+
+variable "media_cors_origins" {
+  description = "Origins allowed to PUT directly to the media bucket (the admin SPA)."
+  type        = list(string)
+  default     = ["https://admin.cloud-commerce-prd.run.app"]
+}

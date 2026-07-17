@@ -58,6 +58,7 @@ type Product struct {
 	Status      ProductStatus
 	Options     []string
 	Variants    []*Variant
+	Images      []*Image
 	CreatedAt   time.Time
 	UpdatedAt   time.Time
 }
@@ -219,4 +220,14 @@ type ProductRepository interface {
 	// transition, and persists the result. Returns apperrors.ErrConflict
 	// when the entity rejects the transition.
 	ActivateIfActivatable(ctx context.Context, tenantID, id string) (*Product, error)
+	// AttachImageToProduct loads the product, lets the aggregate append the
+	// image (enforcing its own limits), and persists the collection atomically
+	// with a product_media_updated event (ADR-002).
+	AttachImageToProduct(ctx context.Context, tenantID, productID string, draft ImageDraft) (*Product, error)
+	// ReorderProductImages reorders the product's images to match orderedIDs
+	// (position 0 = primary) and persists the collection + event atomically.
+	ReorderProductImages(ctx context.Context, tenantID, productID string, orderedIDs []string) (*Product, error)
+	// RemoveProductImage removes one image, re-densifies positions, and
+	// persists the collection + event atomically.
+	RemoveProductImage(ctx context.Context, tenantID, productID, imageID string) (*Product, error)
 }
