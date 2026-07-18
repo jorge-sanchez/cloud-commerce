@@ -30,6 +30,15 @@ type Variant struct {
 	PriceCents   int64    `json:"price_cents"`
 }
 
+// Image is a product photo served from object storage (RFC-003). The URL is
+// absolute and already public; position 0 is the primary/thumbnail.
+type Image struct {
+	URL     string `json:"url"`
+	AltText string `json:"alt_text"`
+	Width   int    `json:"width"`
+	Height  int    `json:"height"`
+}
+
 // Product is a storefront-visible product.
 type Product struct {
 	ID          string    `json:"id"`
@@ -37,6 +46,16 @@ type Product struct {
 	Description string    `json:"description"`
 	Options     []string  `json:"options"`
 	Variants    []Variant `json:"variants"`
+	Images      []Image   `json:"images"`
+}
+
+// PrimaryImage returns the first image (the thumbnail), or nil when the product
+// has none — templates fall back to a placeholder.
+func (p Product) PrimaryImage() *Image {
+	if len(p.Images) == 0 {
+		return nil
+	}
+	return &p.Images[0]
 }
 
 type productList struct {

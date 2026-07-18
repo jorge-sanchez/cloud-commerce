@@ -1,5 +1,14 @@
 {{template "head" .}}
 <h1>{{.Product.Title}}</h1>
+{{if .Product.Images}}
+<div class="gallery">
+  {{range $i, $img := .Product.Images}}
+  <img class="{{if $i}}alt{{else}}primary{{end}}" src="{{$img.URL}}" alt="{{$img.AltText}}"{{if $img.Width}} width="{{$img.Width}}" height="{{$img.Height}}"{{end}} loading="lazy">
+  {{end}}
+</div>
+{{else}}
+<div class="gallery"><span class="primary placeholder" aria-hidden="true"></span></div>
+{{end}}
 <p>{{.Product.Description}}</p>
 <label>Option:
   <select id="variant">
