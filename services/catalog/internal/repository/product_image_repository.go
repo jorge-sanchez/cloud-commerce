@@ -48,6 +48,19 @@ func (r *PostgresProductRepository) RemoveProductImage(ctx context.Context, tena
 	})
 }
 
+// SetProductImageAlt updates one image's alt text.
+func (r *PostgresProductRepository) SetProductImageAlt(ctx context.Context, tenantID, productID, imageID, alt string) (*domain.Product, error) {
+	return r.mutateImages(ctx, tenantID, productID, func(p *domain.Product) error {
+		if err := p.SetImageAlt(imageID, alt); err != nil {
+			if errors.Is(err, domain.ErrImageNotFound) {
+				return apperrors.ErrNotFound
+			}
+			return apperrors.ErrValidation.Wrap(err)
+		}
+		return nil
+	})
+}
+
 // mutateImages loads the product and its gallery FOR UPDATE, lets the aggregate
 // decide the change, reconciles the persisted collection against the entity's
 // post-state, and records a product_media_updated event — all in one

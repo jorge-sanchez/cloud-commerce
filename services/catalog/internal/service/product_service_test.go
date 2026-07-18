@@ -72,6 +72,10 @@ func (f *fakeProductRepo) RemoveProductImage(_ context.Context, _, _, _ string) 
 	return f.result, f.err
 }
 
+func (f *fakeProductRepo) SetProductImageAlt(_ context.Context, _, _, _, _ string) (*domain.Product, error) {
+	return f.result, f.err
+}
+
 // ---------------------------------------------------------------------------
 // Behavior 1: Create builds the aggregate and persists once
 // ---------------------------------------------------------------------------

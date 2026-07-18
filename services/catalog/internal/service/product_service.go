@@ -37,6 +37,8 @@ type ProductService interface {
 	ReorderImages(ctx context.Context, tenantID, productID string, orderedIDs []string) (*domain.Product, error)
 	// RemoveImage removes one image from the gallery and its stored object.
 	RemoveImage(ctx context.Context, tenantID, productID, imageID string) (*domain.Product, error)
+	// SetImageAlt updates one image's alt text.
+	SetImageAlt(ctx context.Context, tenantID, productID, imageID, alt string) (*domain.Product, error)
 }
 
 // AttachImageInput is a finalize request: the object the browser uploaded plus

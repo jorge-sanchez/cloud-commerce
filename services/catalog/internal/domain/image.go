@@ -155,6 +155,17 @@ func (p *Product) RemoveImage(imageID string) error {
 	return nil
 }
 
+// SetImageAlt updates one image's alt text. An unknown id is ErrImageNotFound.
+func (p *Product) SetImageAlt(imageID, alt string) error {
+	for _, img := range p.Images {
+		if img.ID == imageID {
+			img.AltText = strings.TrimSpace(alt)
+			return nil
+		}
+	}
+	return fmt.Errorf("%w: %q", ErrImageNotFound, imageID)
+}
+
 // PrimaryImage returns the position-0 image, or nil when the product has none.
 func (p *Product) PrimaryImage() *Image {
 	if len(p.Images) == 0 {
