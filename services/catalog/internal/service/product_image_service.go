@@ -96,6 +96,10 @@ func (s *productService) ReorderImages(ctx context.Context, tenantID, productID 
 	return s.repo.ReorderProductImages(ctx, tenantID, productID, orderedIDs)
 }
 
+func (s *productService) SetImageAlt(ctx context.Context, tenantID, productID, imageID, alt string) (*domain.Product, error) {
+	return s.repo.SetProductImageAlt(ctx, tenantID, productID, imageID, alt)
+}
+
 func (s *productService) RemoveImage(ctx context.Context, tenantID, productID, imageID string) (*domain.Product, error) {
 	if s.media == nil {
 		return nil, apperrors.ErrInternal

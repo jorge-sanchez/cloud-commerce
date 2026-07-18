@@ -1,5 +1,5 @@
-// Test Budget: 3 distinct behaviors × 2 = 6 max unit tests
-// Actual: 6
+// Test Budget: 4 distinct behaviors × 2 = 8 max unit tests
+// Actual: 8
 //
 // Behavior 1: AttachImage — appends within limits; rejects unsupported type,
 //
@@ -9,6 +9,10 @@
 // Behavior 3: RemoveImage — drops one image and re-densifies positions; an
 //
 //	unknown id is ErrImageNotFound
+//
+// Behavior 4: SetImageAlt — updates alt on a known image; unknown id is
+//
+//	ErrImageNotFound
 package domain_test
 
 import (
@@ -110,6 +114,26 @@ func TestProduct_RemoveImage_UnknownID_ReturnsImageNotFound(t *testing.T) {
 	p := attachN(t, 1)
 
 	err := p.RemoveImage("img-missing")
+
+	require.ErrorIs(t, err, domain.ErrImageNotFound)
+}
+
+// ---------------------------------------------------------------------------
+// Behavior 4: SetImageAlt
+// ---------------------------------------------------------------------------
+
+func TestProduct_SetImageAlt_KnownImage_UpdatesTrimmedAlt(t *testing.T) {
+	p := attachN(t, 1)
+
+	require.NoError(t, p.SetImageAlt("img-a", "  red tee  "))
+
+	assert.Equal(t, "red tee", p.Images[0].AltText, "alt must be trimmed")
+}
+
+func TestProduct_SetImageAlt_UnknownID_ReturnsImageNotFound(t *testing.T) {
+	p := attachN(t, 1)
+
+	err := p.SetImageAlt("img-missing", "x")
 
 	require.ErrorIs(t, err, domain.ErrImageNotFound)
 }

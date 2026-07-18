@@ -1,6 +1,7 @@
-import { FormEvent, useCallback, useEffect, useState } from "react";
+import { Fragment, FormEvent, useCallback, useEffect, useState } from "react";
 import { ApiError, catalog } from "../api";
 import type { ListProductsResponse, ProductResponse } from "../types/catalog";
+import ProductImages from "../ProductImages";
 
 interface VariantDraft {
   sku: string;
@@ -15,7 +16,14 @@ export default function Products() {
   const [variants, setVariants] = useState<VariantDraft[]>([
     { sku: "", option_values: "", price: "" },
   ]);
+  const [expanded, setExpanded] = useState<string | null>(null);
   const [error, setError] = useState("");
+
+  // Splice an updated product back into the list without a full reload, so the
+  // gallery editor's changes are reflected in the row's thumbnail immediately.
+  function replace(updated: ProductResponse) {
+    setProducts((ps) => ps.map((p) => (p.id === updated.id ? updated : p)));
+  }
 
   const load = useCallback(() => {
     catalog
@@ -74,6 +82,7 @@ export default function Products() {
       <table className="card">
         <thead>
           <tr>
+            <th />
             <th>Title</th>
             <th>Status</th>
             <th>Variants</th>
@@ -82,18 +91,35 @@ export default function Products() {
         </thead>
         <tbody>
           {products.map((p) => (
-            <tr key={p.id}>
-              <td>{p.title}</td>
-              <td>
-                <span className={`badge ${p.status}`}>{p.status}</span>
-              </td>
-              <td>{p.variants.map((v) => v.sku).join(", ")}</td>
-              <td>
-                {p.status === "draft" && (
-                  <button onClick={() => activate(p.id)}>Activate</button>
-                )}
-              </td>
-            </tr>
+            <Fragment key={p.id}>
+              <tr>
+                <td>
+                  {p.images.length > 0 ? (
+                    <img className="row-thumb" src={p.images[0].url} alt={p.images[0].alt_text} width={40} height={40} />
+                  ) : (
+                    <span className="row-thumb placeholder" aria-hidden="true" />
+                  )}
+                </td>
+                <td>{p.title}</td>
+                <td>
+                  <span className={`badge ${p.status}`}>{p.status}</span>
+                </td>
+                <td>{p.variants.map((v) => v.sku).join(", ")}</td>
+                <td>
+                  <button className="linklike" onClick={() => setExpanded(expanded === p.id ? null : p.id)}>
+                    {expanded === p.id ? "Hide photos" : `Photos (${p.images.length})`}
+                  </button>
+                  {p.status === "draft" && <button onClick={() => activate(p.id)}>Activate</button>}
+                </td>
+              </tr>
+              {expanded === p.id && (
+                <tr className="expand">
+                  <td colSpan={5}>
+                    <ProductImages product={p} onChange={replace} />
+                  </td>
+                </tr>
+              )}
+            </Fragment>
           ))}
         </tbody>
       </table>

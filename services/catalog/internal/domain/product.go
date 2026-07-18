@@ -230,4 +230,7 @@ type ProductRepository interface {
 	// RemoveProductImage removes one image, re-densifies positions, and
 	// persists the collection + event atomically.
 	RemoveProductImage(ctx context.Context, tenantID, productID, imageID string) (*Product, error)
+	// SetProductImageAlt updates one image's alt text and persists the
+	// collection + event atomically.
+	SetProductImageAlt(ctx context.Context, tenantID, productID, imageID, alt string) (*Product, error)
 }

@@ -52,6 +52,7 @@ func (h *ProductHandler) RegisterRoutes(rg *gin.RouterGroup) {
 	rg.POST("/products/:id/images:sign", h.SignImageUpload)
 	rg.POST("/products/:id/images", h.AttachImage)
 	rg.PATCH("/products/:id/images/reorder", h.ReorderImages)
+	rg.PUT("/products/:id/images/:imageId", h.SetImageAlt)
 	rg.DELETE("/products/:id/images/:imageId", h.RemoveImage)
 }
 
@@ -163,6 +164,24 @@ func (h *ProductHandler) ReorderImages(c *gin.Context) {
 		return
 	}
 	product, err := h.svc.ReorderImages(c.Request.Context(), auth.TenantID(c), c.Param("id"), req.ImageIDs)
+	if err != nil {
+		apperrors.RespondError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, h.toProductResponse(product))
+}
+
+type setImageAltRequest struct {
+	AltText string `json:"alt_text"`
+}
+
+func (h *ProductHandler) SetImageAlt(c *gin.Context) {
+	var req setImageAltRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		apperrors.RespondError(c, apperrors.ErrValidation.Wrap(err))
+		return
+	}
+	product, err := h.svc.SetImageAlt(c.Request.Context(), auth.TenantID(c), c.Param("id"), c.Param("imageId"), req.AltText)
 	if err != nil {
 		apperrors.RespondError(c, err)
 		return
