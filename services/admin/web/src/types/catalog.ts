@@ -20,6 +20,18 @@ export interface VariantResponse {
   price_cents: number /* int64 */;
 }
 /**
+ * ImageResponse is the single-image wire shape. URL is composed from the
+ * configured media base at read time (position 0 is the primary/thumbnail).
+ */
+export interface ImageResponse {
+  id: string;
+  url: string;
+  alt_text: string;
+  position: number /* int */;
+  width: number /* int */;
+  height: number /* int */;
+}
+/**
  * ProductResponse is the single-product wire shape.
  */
 export interface ProductResponse {
@@ -29,8 +41,18 @@ export interface ProductResponse {
   status: string;
   options: string[];
   variants: VariantResponse[];
+  images: ImageResponse[];
   created_at: string /* RFC 3339 */;
   updated_at: string /* RFC 3339 */;
+}
+/**
+ * SignImageUploadResponse hands the admin a direct-to-storage upload URL and
+ * the object key it must send back to finalize the image.
+ */
+export interface SignImageUploadResponse {
+  upload_url: string;
+  storage_key: string;
+  method: string;
 }
 /**
  * ListProductsResponse is the blessed offset-pagination envelope:
@@ -99,3 +121,7 @@ rules here.
  */
 export interface ProductHandler {
 }
+/**
+ * HandlerOption configures optional dependencies on the handler.
+ */
+export type HandlerOption = any;

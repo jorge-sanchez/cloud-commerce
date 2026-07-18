@@ -60,6 +60,18 @@ func (f *fakeProductRepo) ActivateIfActivatable(_ context.Context, _, _ string) 
 	return f.result, f.err
 }
 
+func (f *fakeProductRepo) AttachImageToProduct(_ context.Context, _, _ string, _ domain.ImageDraft) (*domain.Product, error) {
+	return f.result, f.err
+}
+
+func (f *fakeProductRepo) ReorderProductImages(_ context.Context, _, _ string, _ []string) (*domain.Product, error) {
+	return f.result, f.err
+}
+
+func (f *fakeProductRepo) RemoveProductImage(_ context.Context, _, _, _ string) (*domain.Product, error) {
+	return f.result, f.err
+}
+
 // ---------------------------------------------------------------------------
 // Behavior 1: Create builds the aggregate and persists once
 // ---------------------------------------------------------------------------

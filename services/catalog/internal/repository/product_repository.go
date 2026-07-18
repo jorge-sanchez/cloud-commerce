@@ -129,6 +129,9 @@ func (r *PostgresProductRepository) GetByID(ctx context.Context, tenantID, id st
 	if err := r.loadVariants(ctx, tenantID, []*domain.Product{product}); err != nil {
 		return nil, err
 	}
+	if err := r.loadImages(ctx, tenantID, []*domain.Product{product}); err != nil {
+		return nil, err
+	}
 	return product, nil
 }
 
@@ -163,6 +166,9 @@ func (r *PostgresProductRepository) ListByTenant(ctx context.Context, tenantID s
 		return nil, 0, apperrors.ErrInternal.Wrap(err)
 	}
 	if err := r.loadVariants(ctx, tenantID, products); err != nil {
+		return nil, 0, err
+	}
+	if err := r.loadImages(ctx, tenantID, products); err != nil {
 		return nil, 0, err
 	}
 	return products, total, nil
@@ -200,6 +206,9 @@ func (r *PostgresProductRepository) ListActiveByTenant(ctx context.Context, tena
 		return nil, 0, apperrors.ErrInternal.Wrap(err)
 	}
 	if err := r.loadVariants(ctx, tenantID, products); err != nil {
+		return nil, 0, err
+	}
+	if err := r.loadImages(ctx, tenantID, products); err != nil {
 		return nil, 0, err
 	}
 	return products, total, nil
