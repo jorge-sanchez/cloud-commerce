@@ -19,5 +19,5 @@ variable "github_repository" {
 variable "media_cors_origins" {
   description = "Origins allowed to PUT directly to the media bucket (the admin SPA)."
   type        = list(string)
-  default     = ["https://admin.cloud-commerce-prd.run.app"]
+  default     = ["https://admin-bjm36sbwlq-uc.a.run.app"]
 }
