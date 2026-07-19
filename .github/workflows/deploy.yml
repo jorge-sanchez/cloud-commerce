@@ -96,6 +96,10 @@ jobs:
           if [ "${{ inputs.service }}" = "catalog" ]; then
             # Relay transport: publish outbox envelopes to Pub/Sub (ADR-002).
             ENV_VARS="$ENV_VARS,PUBSUB_TOPIC=catalog-events"
+            # Product media (RFC-003, ADR-013): browsers upload directly to the
+            # media bucket via V4 URLs signed as the runtime SA (no key file).
+            ENV_VARS="$ENV_VARS,MEDIA_BUCKET=${{ vars.GCP_PROJECT_ID }}-media"
+            ENV_VARS="$ENV_VARS,MEDIA_SIGNER_SA=${{ vars.GCP_RUNTIME_SA }}"
           fi
           if [ "${{ inputs.service }}" = "orders" ]; then
             # Checkout resolves stores and snapshots prices via public APIs.
