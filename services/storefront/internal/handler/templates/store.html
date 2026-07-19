@@ -3,7 +3,14 @@
 <div class="grid">
   {{range .Products}}
   <div class="card">
-    <a href="/{{$.Store.Handle}}/p/{{.ID}}">{{.Title}}</a>
+    <a href="/{{$.Store.Handle}}/p/{{.ID}}">
+      {{with .PrimaryImage}}
+      <img class="thumb" src="{{.URL}}" alt="{{.AltText}}"{{if .Width}} width="{{.Width}}" height="{{.Height}}"{{end}} loading="lazy">
+      {{else}}
+      <span class="thumb placeholder" aria-hidden="true"></span>
+      {{end}}
+      <span class="title">{{.Title}}</span>
+    </a>
     {{with index .Variants 0}}<div class="price">{{money .PriceCents $.Store.Currency}}</div>{{end}}
   </div>
   {{else}}<p class="muted">No products yet.</p>{{end}}
