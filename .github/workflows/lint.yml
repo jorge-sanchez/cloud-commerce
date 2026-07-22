@@ -45,7 +45,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-go@v7
         with:
           go-version: "1.25"
           cache: true
@@ -89,7 +89,7 @@ jobs:
       - name: Enforce the gin.H success-body ratchet
         run: bash scripts/check_ginh_success_ratchet.sh
 
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-go@v7
         with:
           go-version: "1.25"
           cache: true
